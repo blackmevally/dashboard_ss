@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard SATUSEHAT</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><h1>Dashboard SATUSEHAT</h1><p>Khanza Integration Control Plane</p></div>
+    <span id="health" class="pill">Checking...</span>
+  </header>
+  <main>
+    <section id="stats" class="stats"></section>
+    <section class="toolbar">
+      <select id="type"><option value="">Semua resource</option><option>Patient</option><option>Practitioner</option><option>Organization</option><option>Location</option><option>Encounter</option></select>
+      <select id="status"><option value="">Semua status</option><option>READY</option><option>PROCESSING</option><option>SUCCESS</option><option>RETRY</option><option>FAILED</option><option>BLOCKED</option><option>WAITING_DEPENDENCY</option></select>
+      <button id="refresh">Refresh</button>
+    </section>
+    <section class="panel"><h2>Resource Queue</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Type</th><th>Source Key</th><th>Status</th><th>Attempt</th><th>SATUSEHAT ID</th><th>Updated</th><th></th></tr></thead><tbody id="resources"></tbody></table></div></section>
+    <section class="panel"><h2>Error Center</h2><div class="table-wrap"><table><thead><tr><th>Time</th><th>Resource</th><th>Error</th><th>HTTP</th><th>Attempt</th></tr></thead><tbody id="errors"></tbody></table></div></section>
+  </main>
+  <dialog id="detail"><button class="close" onclick="detail.close()">×</button><pre id="detailBody"></pre></dialog>
+  <script src="./app.js"></script>
+</body>
+</html>
