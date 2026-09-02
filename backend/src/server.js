@@ -2,6 +2,7 @@ import express from 'express';
 import { env } from './config/env.js';
 import { controlDb, khanzaDb } from './database/pool.js';
 import { patientRouter } from './modules/patient/patientRoutes.js';
+import { resourceRouter } from './modules/resource/resourceRoutes.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -42,6 +43,11 @@ app.get('/api', (_req, res) => {
 });
 
 app.use('/api/patients', patientRouter);
+app.use('/api/resources', resourceRouter);
+app.get('/api/errors', (req, res, next) => {
+  req.url = `/errors/list${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
+  resourceRouter.handle(req, res, next);
+});
 
 app.use((error, _req, res, _next) => {
   console.error(error);
