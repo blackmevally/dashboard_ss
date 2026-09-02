@@ -34,7 +34,22 @@ patientRouter.post('/:noRkmMedis/lookup-ihs', async (req, res, next) => {
     );
 
     const resource = upsert.rows[0];
-    const result = await lookupPatientIhs(resource.id, patient.no_ktp);
+    if (resource.satusehat_id) {
+      return res.json({
+        ok: true,
+        patient: {
+          no_rkm_medis: patient.no_rkm_medis,
+          nama: patient.nm_pasien,
+          nik: maskNik(patient.no_ktp)
+        },
+        found: true,
+        created: false,
+        patientId: resource.satusehat_id,
+        alreadyMapped: true
+      });
+    }
+
+    const result = await lookupPatientIhs(resource.id, patient);
 
     res.json({
       ok: true,
