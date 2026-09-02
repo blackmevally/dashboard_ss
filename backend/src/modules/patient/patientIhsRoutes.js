@@ -19,14 +19,16 @@ async function ensureResource(patient) {
   return result.rows[0];
 }
 
+const publicPatient = patient => ({ no_rkm_medis: patient.no_rkm_medis, nama: patient.nm_pasien, nik: maskNik(patient.no_ktp) });
+
 patientIhsRouter.post('/:noRkmMedis/lookup', async (req, res, next) => {
   try {
     const patient = await findPatientByMedicalRecord(req.params.noRkmMedis);
     if (!patient) return res.status(404).json({ ok: false, error: 'PATIENT_NOT_FOUND' });
     const resource = await ensureResource(patient);
-    if (resource.satusehat_id) return res.json({ ok: true, found: true, created: false, alreadyMapped: true, patientId: resource.satusehat_id });
+    if (resource.satusehat_id) return res.json({ ok: true, resource_id: resource.id, patient: publicPatient(patient), found: true, created: false, alreadyMapped: true, patientId: resource.satusehat_id });
     const result = await lookupPatientIhs(resource.id, patient);
-    res.json({ ok: true, patient: { no_rkm_medis: patient.no_rkm_medis, nama: patient.nm_pasien, nik: maskNik(patient.no_ktp) }, ...result });
+    res.json({ ok: true, resource_id: resource.id, patient: publicPatient(patient), ...result });
   } catch (error) { next(error); }
 });
 
@@ -35,9 +37,9 @@ patientIhsRouter.post('/:noRkmMedis/create', async (req, res, next) => {
     const patient = await findPatientByMedicalRecord(req.params.noRkmMedis);
     if (!patient) return res.status(404).json({ ok: false, error: 'PATIENT_NOT_FOUND' });
     const resource = await ensureResource(patient);
-    if (resource.satusehat_id) return res.json({ ok: true, created: false, alreadyMapped: true, patientId: resource.satusehat_id });
+    if (resource.satusehat_id) return res.json({ ok: true, resource_id: resource.id, patient: publicPatient(patient), created: false, alreadyMapped: true, patientId: resource.satusehat_id });
     const result = await createPatientIhs(resource.id, patient);
-    res.json({ ok: true, patient: { no_rkm_medis: patient.no_rkm_medis, nama: patient.nm_pasien, nik: maskNik(patient.no_ktp) }, ...result });
+    res.json({ ok: true, resource_id: resource.id, patient: publicPatient(patient), ...result });
   } catch (error) { next(error); }
 });
 
