@@ -38,6 +38,11 @@ function buildPatientPayload(patient, nik) {
   };
 }
 
+async function getResource(resourceId) {
+  const result = await controlDb.query('SELECT * FROM integration_resource WHERE id = $1 LIMIT 1', [resourceId]);
+  return result.rows[0] ?? null;
+}
+
 async function setProcessing(resourceId) {
   const result = await controlDb.query(
     `UPDATE integration_resource
@@ -86,7 +91,7 @@ export async function lookupPatientIhs(resourceId, patient) {
       return { found: false, created: false, failed: true, errorCode: 'PATIENT_MULTIPLE_MATCHES' };
     }
 
-    return { found: false, ...(await createPatientIhs(resourceId, patient, nik)) };
+    return { found: false, ...(await createPatientIhs(resourceId, patient, nik, true)) };
   } catch (error) {
     await markFailure(resourceId, {
       errorCode: error.code || 'IHS_LOOKUP_FAILED',
@@ -98,7 +103,18 @@ export async function lookupPatientIhs(resourceId, patient) {
   }
 }
 
-export async function createPatientIhs(resourceId, patient, nik = patient?.no_ktp) {
+export async function createPatientIhs(resourceId, patient, nik = patient?.no_ktp, alreadyProcessing = false) {
+  // Explicit dashboard CREATE calls can start from DISCOVERED/READY/RETRY.
+  // Lookup -> create is already PROCESSING and must not increment the attempt twice.
+  if (!alreadyProcessing) {
+    const current = await getResource(resourceId);
+    if (!current) throw new Error('Patient resource not found');
+    if (current.status !== 'PROCESSING') {
+      const processing = await setProcessing(resourceId);
+      if (!processing) throw new Error('Patient resource is not in a processable state');
+    }
+  }
+
   const payload = buildPatientPayload(patient, nik);
   if (!payload) {
     await markFailure(resourceId, {
