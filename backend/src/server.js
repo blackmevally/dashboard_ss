@@ -1,6 +1,7 @@
 import express from 'express';
 import { env } from './config/env.js';
 import { controlDb, khanzaDb } from './database/pool.js';
+import { patientRouter } from './modules/patient/patientRoutes.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -37,6 +38,17 @@ app.get('/api', (_req, res) => {
     name: 'SATUSEHAT Control Plane API',
     version: '0.1.0',
     mode: 'Khanza source-of-truth / integration control-plane'
+  });
+});
+
+app.use('/api/patients', patientRouter);
+
+app.use((error, _req, res, _next) => {
+  console.error(error);
+  res.status(500).json({
+    ok: false,
+    error: 'INTERNAL_ERROR',
+    message: env.nodeEnv === 'production' ? 'Internal server error' : error.message
   });
 });
 
