@@ -28,6 +28,19 @@ resourceRouter.get('/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Keep this before /:id so /errors/list is not interpreted as resource id.
+resourceRouter.get('/errors/list', async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const result = await controlDb.query(`
+      SELECT e.*, r.resource_type, r.source_key, r.status
+      FROM integration_error e JOIN integration_resource r ON r.id = e.resource_id
+      ORDER BY e.id DESC LIMIT $1
+    `, [limit]);
+    res.json({ ok: true, data: result.rows });
+  } catch (error) { next(error); }
+});
+
 resourceRouter.get('/:id', async (req, res, next) => {
   try {
     const result = await controlDb.query('SELECT * FROM integration_resource WHERE id = $1', [req.params.id]);
@@ -41,18 +54,6 @@ resourceRouter.get('/:id', async (req, res, next) => {
       controlDb.query('SELECT id, direction, http_status, response, created_at FROM integration_payload WHERE resource_id = $1 ORDER BY id DESC LIMIT 20', [resource.id])
     ]);
     res.json({ ok: true, data: { ...resource, dependencies: deps.rows, errors: errors.rows, payloads: payloads.rows } });
-  } catch (error) { next(error); }
-});
-
-resourceRouter.get('/errors/list', async (req, res, next) => {
-  try {
-    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
-    const result = await controlDb.query(`
-      SELECT e.*, r.resource_type, r.source_key, r.status
-      FROM integration_error e JOIN integration_resource r ON r.id = e.resource_id
-      ORDER BY e.id DESC LIMIT $1
-    `, [limit]);
-    res.json({ ok: true, data: result.rows });
   } catch (error) { next(error); }
 });
 
