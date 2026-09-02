@@ -22,6 +22,22 @@ function normalizeBirthDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 }
 
+function buildPatientPayload(patient, nik) {
+  const gender = genderToFhir(patient?.jk);
+  const birthDate = normalizeBirthDate(patient?.tgl_lahir);
+  if (!gender || !birthDate || !String(patient?.nm_pasien || '').trim()) return null;
+
+  return {
+    resourceType: 'Patient',
+    identifier: [{ use: 'official', system: 'https://fhir.kemkes.go.id/id/nik', value: String(nik).trim() }],
+    name: [{ use: 'official', text: String(patient.nm_pasien).trim() }],
+    birthDate,
+    gender,
+    ...(patient.alamat ? { address: [{ use: 'home', text: String(patient.alamat).trim() }] } : {}),
+    ...(patient.no_tlp ? { telecom: [{ system: 'phone', value: String(patient.no_tlp).trim(), use: 'mobile' }] } : {})
+  };
+}
+
 async function setProcessing(resourceId) {
   const result = await controlDb.query(
     `UPDATE integration_resource
@@ -70,8 +86,7 @@ export async function lookupPatientIhs(resourceId, patient) {
       return { found: false, created: false, failed: true, errorCode: 'PATIENT_MULTIPLE_MATCHES' };
     }
 
-    const created = await createPatientIhs(resourceId, patient, nik);
-    return { found: false, ...created };
+    return { found: false, ...(await createPatientIhs(resourceId, patient, nik)) };
   } catch (error) {
     await markFailure(resourceId, {
       errorCode: error.code || 'IHS_LOOKUP_FAILED',
@@ -84,10 +99,8 @@ export async function lookupPatientIhs(resourceId, patient) {
 }
 
 export async function createPatientIhs(resourceId, patient, nik = patient?.no_ktp) {
-  const gender = genderToFhir(patient?.jk);
-  const birthDate = normalizeBirthDate(patient?.tgl_lahir);
-
-  if (!gender || !birthDate || !String(patient?.nm_pasien || '').trim()) {
+  const payload = buildPatientPayload(patient, nik);
+  if (!payload) {
     await markFailure(resourceId, {
       errorCode: 'PATIENT_DATA_INCOMPLETE',
       errorMessage: 'Data minimum Patient tidak lengkap: nama, tanggal lahir, atau jenis kelamin',
@@ -96,28 +109,20 @@ export async function createPatientIhs(resourceId, patient, nik = patient?.no_kt
     return { created: false, failed: true, errorCode: 'PATIENT_DATA_INCOMPLETE' };
   }
 
+  // Audit the exact outbound body before transmission, including validation failures.
+  await savePayload(resourceId, 'OUTBOUND', payload);
+
   try {
     const result = await createPatientByNik({
       nik: String(nik || '').trim(),
       name: patient.nm_pasien,
-      birthDate,
-      gender,
-      birthPlace: patient.tmp_lahir,
+      birthDate: payload.birthDate,
+      gender: payload.gender,
       address: patient.alamat,
       phone: patient.no_tlp
     });
 
     const createdResource = result.data;
-    await savePayload(resourceId, 'OUTBOUND', {
-      resourceType: 'Patient',
-      identifier: [{ use: 'official', system: 'https://fhir.kemkes.go.id/id/nik', value: String(nik).trim() }],
-      name: [{ use: 'official', text: String(patient.nm_pasien).trim() }],
-      birthDate,
-      gender,
-      ...(patient.tmp_lahir ? { birthPlace: { text: String(patient.tmp_lahir).trim() } } : {}),
-      ...(patient.alamat ? { address: [{ use: 'home', text: String(patient.alamat).trim() }] } : {}),
-      ...(patient.no_tlp ? { telecom: [{ system: 'phone', value: String(patient.no_tlp).trim(), use: 'mobile' }] } : {})
-    }, null, null);
     await savePayload(resourceId, 'INBOUND', createdResource, result.status, createdResource);
 
     const patientId = createdResource?.id || null;
