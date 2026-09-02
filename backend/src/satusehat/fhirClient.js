@@ -48,7 +48,7 @@ export async function searchPatientByNik(nik) {
 }
 
 /** Create a Patient using the minimum required NIK profile. */
-export async function createPatientByNik({ nik, name, birthDate, gender, birthPlace = null, address = null, phone = null }) {
+export async function createPatientByNik({ nik, name, birthDate, gender, address = null, phone = null }) {
   if (!/^\d{16}$/.test(String(nik || ''))) {
     const error = new Error('NIK must contain exactly 16 digits');
     error.code = 'INVALID_NIK';
@@ -82,7 +82,6 @@ export async function createPatientByNik({ nik, name, birthDate, gender, birthPl
     gender
   };
 
-  if (birthPlace) payload.birthPlace = { text: String(birthPlace).trim() };
   if (address) payload.address = [{ use: 'home', text: String(address).trim() }];
   if (phone) payload.telecom = [{ system: 'phone', value: String(phone).trim(), use: 'mobile' }];
 
