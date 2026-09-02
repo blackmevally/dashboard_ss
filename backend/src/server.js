@@ -2,6 +2,7 @@ import express from 'express';
 import { env } from './config/env.js';
 import { controlDb, khanzaDb } from './database/pool.js';
 import { patientRouter } from './modules/patient/patientRoutes.js';
+import { patientIhsRouter } from './modules/patient/patientIhsRoutes.js';
 import { resourceRouter } from './modules/resource/resourceRoutes.js';
 
 const app = express();
@@ -43,6 +44,7 @@ app.get('/api', (_req, res) => {
 });
 
 app.use('/api/patients', patientRouter);
+app.use('/api/patients', patientIhsRouter);
 app.use('/api/resources', resourceRouter);
 app.get('/api/errors', (req, res, next) => {
   req.url = `/errors/list${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
