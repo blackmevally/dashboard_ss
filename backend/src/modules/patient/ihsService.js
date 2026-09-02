@@ -1,5 +1,7 @@
+import crypto from 'node:crypto';
 import { controlDb } from '../../database/pool.js';
-import { searchPatientByNik } from '../../satusehat/fhirClient.js';
+import { createPatientByNik, searchPatientByNik } from '../../satusehat/fhirClient.js';
+import { markFailure, markSuccess } from '../../queue/resourceQueue.js';
 
 export function maskNik(nik) {
   const value = String(nik || '');
@@ -7,65 +9,137 @@ export function maskNik(nik) {
   return `${value.slice(0, 4)}********${value.slice(-4)}`;
 }
 
-export async function lookupPatientIhs(resourceId, nik) {
-  const normalizedNik = String(nik || '').trim();
+function genderToFhir(jk) {
+  const value = String(jk || '').trim().toUpperCase();
+  if (value === 'L' || value === 'M' || value === 'MALE') return 'male';
+  if (value === 'P' || value === 'F' || value === 'FEMALE') return 'female';
+  return null;
+}
 
+function normalizeBirthDate(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+async function setProcessing(resourceId) {
+  const result = await controlDb.query(
+    `UPDATE integration_resource
+     SET status = 'PROCESSING', attempt_count = attempt_count + 1,
+         last_attempt_at = CURRENT_TIMESTAMP, locked_at = CURRENT_TIMESTAMP,
+         locked_by = $2, updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1 AND status IN ('DISCOVERED', 'READY', 'RETRY')
+     RETURNING *`,
+    [resourceId, `patient-${crypto.randomUUID()}`]
+  );
+  return result.rows[0] ?? null;
+}
+
+async function savePayload(resourceId, direction, payload, httpStatus = null, response = null) {
+  await controlDb.query(
+    `INSERT INTO integration_payload (resource_id, direction, payload, http_status, response)
+     VALUES ($1, $2, $3::jsonb, $4, $5::jsonb)`,
+    [resourceId, direction, JSON.stringify(payload ?? {}), httpStatus, response == null ? null : JSON.stringify(response)]
+  );
+}
+
+export async function lookupPatientIhs(resourceId, patient) {
+  const processing = await setProcessing(resourceId);
+  if (!processing) throw new Error('Patient resource is not in a processable state');
+
+  const nik = String(patient?.no_ktp || '').trim();
   try {
-    const result = await searchPatientByNik(normalizedNik);
-    const entry = result.data?.entry || [];
-    const patientId = entry[0]?.resource?.id || null;
+    const result = await searchPatientByNik(nik);
+    await savePayload(resourceId, 'INBOUND', result.data, result.status, result.data);
 
-    if (!patientId) {
-      await markFailed(resourceId, 'PATIENT_NOT_FOUND', 'Patient IHS tidak ditemukan melalui NIK');
-      return { found: false, patientId: null };
+    const entries = result.data?.entry || [];
+    const patientId = entries.length === 1 ? entries[0]?.resource?.id || null : null;
+
+    if (patientId) {
+      await markSuccess(resourceId, { satusehatId: patientId });
+      return { found: true, created: false, patientId };
     }
 
-    await controlDb.query(
-      `UPDATE integration_resource
-       SET satusehat_id = $1,
-           status = 'SUCCESS',
-           http_status = $2,
-           error_code = NULL,
-           error_message = NULL,
-           last_attempt_at = CURRENT_TIMESTAMP,
-           last_success_at = CURRENT_TIMESTAMP,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3`,
-      [patientId, result.status, resourceId]
-    );
+    if (entries.length > 1) {
+      await markFailure(resourceId, {
+        errorCode: 'PATIENT_MULTIPLE_MATCHES',
+        errorMessage: 'SATUSEHAT mengembalikan lebih dari satu Patient untuk NIK yang sama',
+        httpStatus: result.status,
+        response: result.data
+      });
+      return { found: false, created: false, failed: true, errorCode: 'PATIENT_MULTIPLE_MATCHES' };
+    }
 
-    return { found: true, patientId };
+    const created = await createPatientIhs(resourceId, patient, nik);
+    return { found: false, ...created };
   } catch (error) {
-    await markFailed(
-      resourceId,
-      error.code || 'IHS_LOOKUP_FAILED',
-      error.message,
-      error.httpStatus
-    );
-    return { found: false, patientId: null, failed: true, errorCode: error.code };
+    await markFailure(resourceId, {
+      errorCode: error.code || 'IHS_LOOKUP_FAILED',
+      errorMessage: error.message,
+      httpStatus: error.httpStatus || null,
+      response: error.response || null
+    });
+    return { found: false, created: false, failed: true, errorCode: error.code || 'IHS_LOOKUP_FAILED' };
   }
 }
 
-async function markFailed(resourceId, code, message, httpStatus = null) {
-  await controlDb.query(
-    `UPDATE integration_resource
-     SET status = 'FAILED',
-         attempt_count = attempt_count + 1,
-         http_status = $1,
-         error_code = $2,
-         error_message = $3,
-         last_attempt_at = CURRENT_TIMESTAMP,
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = $4`,
-    [httpStatus, code, message, resourceId]
-  );
+export async function createPatientIhs(resourceId, patient, nik = patient?.no_ktp) {
+  const gender = genderToFhir(patient?.jk);
+  const birthDate = normalizeBirthDate(patient?.tgl_lahir);
 
-  await controlDb.query(
-    `INSERT INTO integration_error
-      (resource_id, attempt_no, error_code, error_message, http_status)
-     SELECT id, attempt_count, $1, $2, $3
-     FROM integration_resource
-     WHERE id = $4`,
-    [code, message, httpStatus, resourceId]
-  );
+  if (!gender || !birthDate || !String(patient?.nm_pasien || '').trim()) {
+    await markFailure(resourceId, {
+      errorCode: 'PATIENT_DATA_INCOMPLETE',
+      errorMessage: 'Data minimum Patient tidak lengkap: nama, tanggal lahir, atau jenis kelamin',
+      httpStatus: null
+    });
+    return { created: false, failed: true, errorCode: 'PATIENT_DATA_INCOMPLETE' };
+  }
+
+  try {
+    const result = await createPatientByNik({
+      nik: String(nik || '').trim(),
+      name: patient.nm_pasien,
+      birthDate,
+      gender,
+      birthPlace: patient.tmp_lahir,
+      address: patient.alamat,
+      phone: patient.no_tlp
+    });
+
+    const createdResource = result.data;
+    await savePayload(resourceId, 'OUTBOUND', {
+      resourceType: 'Patient',
+      identifier: [{ use: 'official', system: 'https://fhir.kemkes.go.id/id/nik', value: String(nik).trim() }],
+      name: [{ use: 'official', text: String(patient.nm_pasien).trim() }],
+      birthDate,
+      gender,
+      ...(patient.tmp_lahir ? { birthPlace: { text: String(patient.tmp_lahir).trim() } } : {}),
+      ...(patient.alamat ? { address: [{ use: 'home', text: String(patient.alamat).trim() }] } : {}),
+      ...(patient.no_tlp ? { telecom: [{ system: 'phone', value: String(patient.no_tlp).trim(), use: 'mobile' }] } : {})
+    }, null, null);
+    await savePayload(resourceId, 'INBOUND', createdResource, result.status, createdResource);
+
+    const patientId = createdResource?.id || null;
+    if (!patientId) {
+      await markFailure(resourceId, {
+        errorCode: 'PATIENT_CREATE_NO_ID',
+        errorMessage: 'SATUSEHAT menerima request tetapi response tidak berisi Patient.id',
+        httpStatus: result.status,
+        response: createdResource
+      });
+      return { created: false, failed: true, errorCode: 'PATIENT_CREATE_NO_ID' };
+    }
+
+    await markSuccess(resourceId, { satusehatId: patientId });
+    return { created: true, patientId };
+  } catch (error) {
+    await markFailure(resourceId, {
+      errorCode: error.code || 'IHS_CREATE_FAILED',
+      errorMessage: error.message,
+      httpStatus: error.httpStatus || null,
+      response: error.response || null
+    });
+    return { created: false, failed: true, errorCode: error.code || 'IHS_CREATE_FAILED' };
+  }
 }
