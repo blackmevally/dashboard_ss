@@ -6,6 +6,8 @@ const required = (name) => {
   return value;
 };
 
+const optional = (name, fallback = '') => process.env[name] || fallback;
+
 export const env = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -16,12 +18,15 @@ export const env = {
     user: required('PGUSER'),
     password: required('PGPASSWORD')
   },
+  // Khanza is intentionally optional during the control-plane bootstrap.
+  // The dashboard must be able to migrate/start without a Khanza credential.
+  // When Khanza monitoring is enabled, provide the read-only connection values.
   khanza: {
-    host: required('KHANZA_DB_HOST'),
+    host: optional('KHANZA_DB_HOST', '127.0.0.1'),
     port: Number(process.env.KHANZA_DB_PORT || 3306),
-    database: required('KHANZA_DB_NAME'),
-    user: required('KHANZA_DB_USER'),
-    password: required('KHANZA_DB_PASSWORD'),
+    database: optional('KHANZA_DB_NAME', 'sik'),
+    user: optional('KHANZA_DB_USER', 'readonly_satusehat'),
+    password: optional('KHANZA_DB_PASSWORD'),
     ssl: process.env.KHANZA_DB_SSL === 'true'
   },
   satusehat: {
