@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { controlDb } from '../../database/pool.js';
-import { retryResource } from '../../queue/resourceQueue.js';
 
 export const resourceRouter = Router();
 
@@ -28,7 +27,6 @@ resourceRouter.get('/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Keep this before /:id so /errors/list is not interpreted as resource id.
 resourceRouter.get('/errors/list', async (req, res, next) => {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
@@ -38,6 +36,25 @@ resourceRouter.get('/errors/list', async (req, res, next) => {
       ORDER BY e.id DESC LIMIT $1
     `, [limit]);
     res.json({ ok: true, data: result.rows });
+  } catch (error) { next(error); }
+});
+
+resourceRouter.get('/summary', async (_req, res, next) => {
+  try {
+    const [status, errors, rejected] = await Promise.all([
+      controlDb.query(`SELECT status, COUNT(*)::int AS count FROM integration_resource GROUP BY status ORDER BY status`),
+      controlDb.query(`SELECT COUNT(*)::int AS count FROM integration_error WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'`),
+      controlDb.query(`SELECT COUNT(*)::int AS count FROM integration_resource WHERE http_status BETWEEN 400 AND 499`)
+    ]);
+    res.json({
+      ok: true,
+      data: {
+        status: status.rows,
+        errors_24h: errors.rows[0]?.count ?? 0,
+        client_rejections: rejected.rows[0]?.count ?? 0,
+        mode: 'MONITORING_ONLY'
+      }
+    });
   } catch (error) { next(error); }
 });
 
@@ -54,13 +71,5 @@ resourceRouter.get('/:id', async (req, res, next) => {
       controlDb.query('SELECT id, direction, http_status, response, created_at FROM integration_payload WHERE resource_id = $1 ORDER BY id DESC LIMIT 20', [resource.id])
     ]);
     res.json({ ok: true, data: { ...resource, dependencies: deps.rows, errors: errors.rows, payloads: payloads.rows } });
-  } catch (error) { next(error); }
-});
-
-resourceRouter.post('/:id/retry', async (req, res, next) => {
-  try {
-    const resource = await retryResource(req.params.id);
-    if (!resource) return res.status(409).json({ ok: false, error: 'RESOURCE_NOT_RETRYABLE' });
-    res.json({ ok: true, data: resource });
   } catch (error) { next(error); }
 });
