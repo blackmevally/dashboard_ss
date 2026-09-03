@@ -4,6 +4,7 @@ import { controlDb, khanzaDb } from './database/pool.js';
 import { patientRouter } from './modules/patient/patientRoutes.js';
 import { patientIhsRouter } from './modules/patient/patientIhsRoutes.js';
 import { resourceRouter } from './modules/resource/resourceRoutes.js';
+import { advisoryRouter } from './modules/advisory/advisoryRoutes.js';
 
 const app = express();
 app.use((req, res, next) => {
@@ -58,6 +59,7 @@ app.get('/api', (_req, res) => {
 app.use('/api/patients', patientRouter);
 app.use('/api/patients', patientIhsRouter);
 app.use('/api/resources', resourceRouter);
+app.use('/api/advisories', advisoryRouter);
 app.get('/api/errors', (req, res, next) => {
   req.url = `/errors/list${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
   resourceRouter.handle(req, res, next);
