@@ -36,7 +36,7 @@ function renderPatientCard(p) {
   const resolution = resolutionFor(p);
   const errorBlock = p.error_code ? `<div class="patient-review"><div><small>Error</small><strong>${esc(p.error_code)}</strong></div><div><small>Resolution</small><strong>${esc(resolution || 'REVIEW')}</strong></div><div><small>Auto-retry</small><strong>${p.status === 'FAILED' ? 'Disabled' : 'Managed by queue'}</strong></div><div><small>Auto-create</small><strong>Disabled</strong></div></div>` : '';
   patientCard.classList.remove('hidden');
-  patientCard.innerHTML = `<div class="patient-main"><div><small>No. RM</small><strong>${esc(p.no_rkm_medis)}</strong></div><div><small>Nama</small><strong>${esc(p.nama)}</strong></div><div><small>NIK</small><strong>${esc(p.nik || '********')}</strong></div><div><small>Status</small><span class="status ${esc(p.status)}">${esc(p.status)}</span></div></div><div class="patient-ihs">${p.satusehat_id ? `<small>IHS ID</small><code>${esc(p.satusehat_id)}</code>` : '<span>Patient belum memiliki IHS ID pada control plane.</span>'}</div>${errorBlock}<div class="patient-actions">${patientActions(p)}</div>`;
+  patientCard.innerHTML = `<div class="patient-main"><div><small>No. RM</small><strong>${esc(p.no_rkm_medis)}</strong></div><div><small>Nama</small><strong>${esc(p.nama || '-')}</strong></div><div><small>NIK</small><strong>${esc(p.nik || '********')}</strong></div><div><small>Status</small><span class="status ${esc(p.status)}">${esc(p.status)}</span></div></div><div class="patient-ihs">${p.satusehat_id ? `<small>IHS ID</small><code>${esc(p.satusehat_id)}</code>` : '<span>Patient belum memiliki IHS ID pada control plane.</span>'}</div>${errorBlock}${p.error_code === 'PATIENT_MULTIPLE_MATCHES' ? '<div class="review-note"><strong>Review manual diperlukan.</strong><span>SATUSEHAT mengembalikan beberapa kandidat; sistem tidak memilih kandidat secara otomatis.</span></div>' : ''}${p.error_code === 'PATIENT_IDENTIFIER_MISMATCH' ? '<div class="review-note"><strong>Review manual diperlukan.</strong><span>Identifier NIK tidak cocok persis; mapping diblokir untuk menjaga integritas data.</span></div>' : ''}<div class="patient-actions">${patientActions(p)}</div>`;
 }
 
 async function loadPatient() {
@@ -48,16 +48,18 @@ async function loadPatient() {
     const existing = resources.data.find(r => String(r.no_rkm_medis || r.source_key || '') === noRm);
 
     if (existing && existing.status === 'FAILED') {
+      const profile = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/profile`);
       patientMsg.textContent = `Review manual: ${existing.error_code || 'FAILED'}`;
       const resource = (await getJson(`${API}/patients/resource/${existing.id}`)).data;
-      renderPatientCard({ ...existing, ...resource, no_rkm_medis: noRm });
+      renderPatientCard({ ...existing, ...resource, ...profile.patient, no_rkm_medis: noRm });
       return;
     }
 
     if (existing && (existing.status === 'PROCESSING' || existing.status === 'SUCCESS')) {
+      const profile = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/profile`);
       patientMsg.textContent = existing.status === 'SUCCESS' ? 'Patient terhubung/ditemukan.' : 'Patient sedang diproses.';
       const resource = (await getJson(`${API}/patients/resource/${existing.id}`)).data;
-      renderPatientCard({ ...existing, ...resource, no_rkm_medis: noRm });
+      renderPatientCard({ ...existing, ...resource, ...profile.patient, no_rkm_medis: noRm });
       return;
     }
 
@@ -66,7 +68,7 @@ async function loadPatient() {
     await load();
     if (result.resource_id) {
       const resource = (await getJson(`${API}/patients/resource/${result.resource_id}`)).data;
-      renderPatientCard({...resource, no_rkm_medis: noRm, nama: result.patient?.nama || resource.source_key});
+      renderPatientCard({...resource, no_rkm_medis: noRm, nama: result.patient?.nama || resource.source_key, nik: result.patient?.nik});
     }
   } catch (e) {
     patientMsg.textContent = e.message;
