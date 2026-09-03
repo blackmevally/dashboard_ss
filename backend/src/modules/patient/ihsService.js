@@ -162,9 +162,10 @@ export async function lookupPatientIhs(resourceId, patient) {
       errorCode: error.code || 'IHS_LOOKUP_FAILED',
       errorMessage: error.message,
       httpStatus: error.httpStatus || null,
-      response: error.response || null
+      response: error.response || null,
+      retryable: false
     });
-    return { found: false, created: false, failed: true, errorCode: error.code || 'IHS_LOOKUP_FAILED' };
+    return { found: false, created: false, failed: true, errorCode: error.code || 'IHS_LOOKUP_FAILED', resolution: 'REVIEW', candidates: [] };
   }
 }
 
