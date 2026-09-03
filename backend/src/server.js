@@ -6,6 +6,17 @@ import { patientIhsRouter } from './modules/patient/patientIhsRoutes.js';
 import { resourceRouter } from './modules/resource/resourceRoutes.js';
 
 const app = express();
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin === 'http://localhost' || origin?.startsWith('http://localhost:')) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', async (_req, res) => {
