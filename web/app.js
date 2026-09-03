@@ -44,6 +44,23 @@ async function loadPatient() {
   if (!noRm) return;
   patientMsg.textContent = 'Mengecek...';
   try {
+    const resources = await getJson(`${API}/resources?type=Patient&limit=200`);
+    const existing = resources.data.find(r => String(r.no_rkm_medis || r.source_key || '') === noRm);
+
+    if (existing && existing.status === 'FAILED') {
+      patientMsg.textContent = `Review manual: ${existing.error_code || 'FAILED'}`;
+      const resource = (await getJson(`${API}/patients/resource/${existing.id}`)).data;
+      renderPatientCard({ ...existing, ...resource, no_rkm_medis: noRm });
+      return;
+    }
+
+    if (existing && (existing.status === 'PROCESSING' || existing.status === 'SUCCESS')) {
+      patientMsg.textContent = existing.status === 'SUCCESS' ? 'Patient terhubung/ditemukan.' : 'Patient sedang diproses.';
+      const resource = (await getJson(`${API}/patients/resource/${existing.id}`)).data;
+      renderPatientCard({ ...existing, ...resource, no_rkm_medis: noRm });
+      return;
+    }
+
     const result = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/lookup`, {method:'POST'});
     patientMsg.textContent = result.found ? 'Patient terhubung/ditemukan.' : result.failed ? `Gagal: ${result.errorCode || 'UNKNOWN'}` : 'Pemeriksaan selesai.';
     await load();
