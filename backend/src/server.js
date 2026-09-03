@@ -8,7 +8,8 @@ import { resourceRouter } from './modules/resource/resourceRoutes.js';
 const app = express();
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin === 'http://localhost' || origin?.startsWith('http://localhost:')) {
+  const allowedOrigin = origin && /^(https?:\/\/)(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  if (allowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }
