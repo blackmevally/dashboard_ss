@@ -17,7 +17,6 @@ export async function findPatients({ limit = 100, offset = 0 } = {}) {
        tmp_lahir,
        tgl_lahir,
        alamat,
-       kota,
        no_tlp
      FROM pasien
      ORDER BY no_rkm_medis
@@ -38,7 +37,6 @@ export async function findPatientByMedicalRecord(noRkmMedis) {
        tmp_lahir,
        tgl_lahir,
        alamat,
-       kota,
        no_tlp
      FROM pasien
      WHERE no_rkm_medis = ?
