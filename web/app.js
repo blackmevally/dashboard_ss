@@ -50,6 +50,11 @@ async function patientLookup(noRm) {
   await loadPatient();
 }
 
+function advisoryMarkup(advisory) {
+  if (!advisory) return '<span class="muted">Belum tersedia</span>';
+  return `<div class="advisory"><div><span class="priority ${esc(advisory.priority)}">${esc(advisory.priority)}</span> <strong>${esc(advisory.title)}</strong></div><small>${esc(advisory.advice)}</small></div>`;
+}
+
 async function load() {
   try {
     const params = new URLSearchParams({limit:'200'});
@@ -64,8 +69,15 @@ async function load() {
       <td>${esc(r.updated_at)}</td><td>${r.resource_type === 'Patient' ? patientActions(r) : `<button onclick="showDetail(${Number(r.id)})">Detail</button>`}</td>
     </tr>`).join('') || '<tr><td colspan="8">Belum ada resource.</td></tr>';
 
-    const errors = await getJson(`${API}/errors?limit=50`);
-    errorsEl.innerHTML = errors.data.map(e => `<tr><td>${esc(e.created_at)}</td><td>${esc(e.resource_type)} #${esc(e.resource_id)}</td><td>${esc(e.error_code)} — ${esc(e.error_message)}</td><td>${esc(e.http_status || '-')}</td><td>${esc(e.attempt_no || '-')}</td></tr>`).join('') || '<tr><td colspan="5">Tidak ada error.</td></tr>';
+    const advisories = await getJson(`${API}/advisories?limit=50`);
+    errorsEl.innerHTML = advisories.data.map(e => `<tr>
+      <td>${esc(e.created_at)}</td>
+      <td>${esc(e.resource_type)} #${esc(e.resource_id)}</td>
+      <td><strong>${esc(e.error_code)}</strong><br><small>${esc(e.error_message)}</small></td>
+      <td>${esc(e.http_status || '-')}</td>
+      <td>${esc(e.attempt_no || '-')}</td>
+      <td>${advisoryMarkup(e.advisory)}</td>
+    </tr>`).join('') || '<tr><td colspan="6">Tidak ada error.</td></tr>';
     health.textContent = 'MONITORING ONLY'; health.className = 'pill ok';
   } catch (e) { health.textContent = 'API Error'; health.className = 'pill bad'; console.error(e); }
 }
