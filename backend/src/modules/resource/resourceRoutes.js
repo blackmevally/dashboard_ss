@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { controlDb } from '../../database/pool.js';
-import { retryResource } from '../../queue/resourceQueue.js';
 
 export const resourceRouter = Router();
 
@@ -28,13 +27,13 @@ resourceRouter.get('/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Keep this before /:id so /errors/list is not interpreted as resource id.
 resourceRouter.get('/errors/list', async (req, res, next) => {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const result = await controlDb.query(`
       SELECT e.*, r.resource_type, r.source_key, r.status
-      FROM integration_error e JOIN integration_resource r ON r.id = e.resource_id
+      FROM integration_error e
+      JOIN integration_resource r ON r.id = e.resource_id
       ORDER BY e.id DESC LIMIT $1
     `, [limit]);
     res.json({ ok: true, data: result.rows });
@@ -48,19 +47,12 @@ resourceRouter.get('/:id', async (req, res, next) => {
     const resource = result.rows[0];
     const [deps, errors, payloads] = await Promise.all([
       controlDb.query(`SELECT d.*, dep.resource_type, dep.source_key, dep.satusehat_id, dep.status AS dependency_status
-                       FROM integration_dependency d JOIN integration_resource dep ON dep.id = d.depends_on_resource_id
+                       FROM integration_dependency d
+                       JOIN integration_resource dep ON dep.id = d.depends_on_resource_id
                        WHERE d.resource_id = $1 ORDER BY d.id`, [resource.id]),
       controlDb.query('SELECT * FROM integration_error WHERE resource_id = $1 ORDER BY id DESC LIMIT 50', [resource.id]),
       controlDb.query('SELECT id, direction, http_status, response, created_at FROM integration_payload WHERE resource_id = $1 ORDER BY id DESC LIMIT 20', [resource.id])
     ]);
     res.json({ ok: true, data: { ...resource, dependencies: deps.rows, errors: errors.rows, payloads: payloads.rows } });
-  } catch (error) { next(error); }
-});
-
-resourceRouter.post('/:id/retry', async (req, res, next) => {
-  try {
-    const resource = await retryResource(req.params.id);
-    if (!resource) return res.status(409).json({ ok: false, error: 'RESOURCE_NOT_RETRYABLE' });
-    res.json({ ok: true, data: resource });
   } catch (error) { next(error); }
 });
