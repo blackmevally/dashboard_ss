@@ -1,0 +1,17 @@
+# Local / production configuration
+config/config.local.php
+config/database.local.php
+.env
+.env.*
+!.env.example
+
+# Runtime data
+storage/logs/*
+storage/cache/*
+storage/backup/*
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
