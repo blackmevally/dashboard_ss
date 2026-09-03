@@ -1,4 +1,4 @@
-const API = window.DASHBOARD_API || '/api';
+const API = window.DASHBOARD_API || 'http://localhost:3000/api';
 const statuses = ['DISCOVERED','MAPPED','READY','PROCESSING','SUCCESS','RETRY','FAILED','BLOCKED','WAITING_DEPENDENCY'];
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
