@@ -146,7 +146,8 @@ export async function lookupPatientIhs(resourceId, patient) {
       errorCode: 'PATIENT_NOT_FOUND',
       errorMessage: 'Tidak ditemukan Patient SATUSEHAT untuk NIK; lookup tetap read-only dan tidak membuat Patient otomatis',
       httpStatus: result.status,
-      response: result.data
+      response: result.data,
+      retryable: false
     });
     return {
       found: false,
