@@ -70,6 +70,24 @@ export async function lookupPatientIhs(resourceId, patient) {
   if (!processing) throw new Error('Patient resource is not in a processable state');
 
   const nik = String(patient?.no_ktp || '').trim();
+
+  if (!/^\d{16}$/.test(nik)) {
+    await markFailure(resourceId, {
+      errorCode: 'PATIENT_NIK_INVALID',
+      errorMessage: 'NIK pasien Khanza tidak valid atau belum tersedia',
+      httpStatus: null
+    });
+
+    return {
+      found: false,
+      created: false,
+      failed: true,
+      errorCode: 'PATIENT_NIK_INVALID',
+      resolution: 'REVIEW',
+      candidates: []
+    };
+  }
+
   try {
     const result = await searchPatientByNik(nik);
     await savePayload(resourceId, 'INBOUND', result.data, result.status, result.data);
