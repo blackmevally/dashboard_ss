@@ -86,7 +86,7 @@ export async function markSuccess(resourceId, { satusehatId = null } = {}) {
   return result.rows[0] ?? null;
 }
 
-export async function markFailure(resourceId, { errorCode = 'PROCESSING_ERROR', errorMessage = 'Processing failed', httpStatus = null, response = null } = {}) {
+export async function markFailure(resourceId, { errorCode = 'PROCESSING_ERROR', errorMessage = 'Processing failed', httpStatus = null, response = null, retryable = true } = {}) {
   const client = await controlDb.connect();
   try {
     await client.query('BEGIN');
@@ -95,9 +95,10 @@ export async function markFailure(resourceId, { errorCode = 'PROCESSING_ERROR', 
     const r = current.rows[0];
     const maxAttempts = r.max_attempts ?? DEFAULT_MAX_ATTEMPTS;
     const exhausted = r.attempt_count >= maxAttempts;
-    const nextStatus = exhausted ? 'BLOCKED' : 'RETRY';
+    const shouldRetry = retryable && !exhausted;
+    const nextStatus = shouldRetry ? 'RETRY' : 'FAILED';
     assertTransition(r.status, nextStatus);
-    const delay = exhausted ? null : retryDelaySeconds(r.attempt_count);
+    const delay = shouldRetry ? retryDelaySeconds(r.attempt_count) : null;
 
     const updated = await client.query(`
       UPDATE integration_resource
@@ -114,7 +115,7 @@ export async function markFailure(resourceId, { errorCode = 'PROCESSING_ERROR', 
     await client.query(`
       INSERT INTO integration_log (level, component, resource_id, message, context)
       VALUES ($1, 'queue', $2, $3, $4)
-    `, [exhausted ? 'ERROR' : 'WARN', resourceId, exhausted ? 'Resource blocked after max attempts' : 'Resource scheduled for retry', JSON.stringify({ retryDelaySeconds: delay, attempt: r.attempt_count, maxAttempts })]);
+    `, [shouldRetry ? 'WARN' : 'ERROR', resourceId, shouldRetry ? 'Resource scheduled for retry' : 'Resource failed and requires review', JSON.stringify({ retryable, retryDelaySeconds: delay, attempt: r.attempt_count, maxAttempts })]);
     await client.query('COMMIT');
     return updated.rows[0];
   } catch (error) {
