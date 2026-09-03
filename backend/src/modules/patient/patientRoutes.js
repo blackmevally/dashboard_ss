@@ -18,6 +18,26 @@ patientRouter.post('/discover', async (req, res, next) => {
   }
 });
 
+patientRouter.get('/:noRkmMedis/profile', async (req, res, next) => {
+  try {
+    const patient = await findPatientByMedicalRecord(req.params.noRkmMedis);
+    if (!patient) return res.status(404).json({ ok: false, error: 'PATIENT_NOT_FOUND' });
+
+    res.json({
+      ok: true,
+      patient: {
+        no_rkm_medis: patient.no_rkm_medis,
+        nama: patient.nm_pasien,
+        nik: maskNik(patient.no_ktp),
+        jk: patient.jk || null,
+        tgl_lahir: patient.tgl_lahir || null
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 patientRouter.post('/:noRkmMedis/lookup-ihs', async (req, res, next) => {
   try {
     const patient = await findPatientByMedicalRecord(req.params.noRkmMedis);
