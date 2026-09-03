@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { controlDb } from '../../database/pool.js';
 import { createPatientByNik, searchPatientByNik } from '../../satusehat/fhirClient.js';
 import { markFailure, markSuccess } from '../../queue/resourceQueue.js';
+import { resolvePatientIhs } from './ihsResolver.js';
 
 export function maskNik(nik) {
   const value = String(nik || '');
@@ -73,25 +74,67 @@ export async function lookupPatientIhs(resourceId, patient) {
     const result = await searchPatientByNik(nik);
     await savePayload(resourceId, 'INBOUND', result.data, result.status, result.data);
 
-    const entries = result.data?.entry || [];
-    const patientId = entries.length === 1 ? entries[0]?.resource?.id || null : null;
+    const resolution = resolvePatientIhs(result.data, nik);
 
-    if (patientId) {
-      await markSuccess(resourceId, { satusehatId: patientId });
-      return { found: true, created: false, patientId };
+    if (resolution.outcome === 'MATCHED') {
+      await markSuccess(resourceId, { satusehatId: resolution.patientId });
+      return {
+        found: true,
+        created: false,
+        patientId: resolution.patientId,
+        resolution: 'MATCHED',
+        candidates: resolution.candidates
+      };
     }
 
-    if (entries.length > 1) {
+    if (resolution.outcome === 'AMBIGUOUS') {
       await markFailure(resourceId, {
         errorCode: 'PATIENT_MULTIPLE_MATCHES',
-        errorMessage: 'SATUSEHAT mengembalikan lebih dari satu Patient untuk NIK yang sama',
+        errorMessage: 'SATUSEHAT mengembalikan lebih dari satu Patient untuk NIK yang sama; mapping diblokir untuk review',
         httpStatus: result.status,
         response: result.data
       });
-      return { found: false, created: false, failed: true, errorCode: 'PATIENT_MULTIPLE_MATCHES' };
+      return {
+        found: false,
+        created: false,
+        failed: true,
+        errorCode: 'PATIENT_MULTIPLE_MATCHES',
+        resolution: 'AMBIGUOUS',
+        candidates: resolution.candidates
+      };
     }
 
-    return { found: false, ...(await createPatientIhs(resourceId, patient, nik, true)) };
+    if (resolution.outcome === 'REVIEW') {
+      await markFailure(resourceId, {
+        errorCode: 'PATIENT_IDENTIFIER_MISMATCH',
+        errorMessage: 'Response Patient tidak memiliki identifier NIK yang cocok persis; mapping diblokir untuk review',
+        httpStatus: result.status,
+        response: result.data
+      });
+      return {
+        found: false,
+        created: false,
+        failed: true,
+        errorCode: 'PATIENT_IDENTIFIER_MISMATCH',
+        resolution: 'REVIEW',
+        candidates: resolution.candidates
+      };
+    }
+
+    await markFailure(resourceId, {
+      errorCode: 'PATIENT_NOT_FOUND',
+      errorMessage: 'Tidak ditemukan Patient SATUSEHAT untuk NIK; lookup tetap read-only dan tidak membuat Patient otomatis',
+      httpStatus: result.status,
+      response: result.data
+    });
+    return {
+      found: false,
+      created: false,
+      failed: true,
+      errorCode: 'PATIENT_NOT_FOUND',
+      resolution: 'NOT_FOUND',
+      candidates: []
+    };
   } catch (error) {
     await markFailure(resourceId, {
       errorCode: error.code || 'IHS_LOOKUP_FAILED',
@@ -125,7 +168,6 @@ export async function createPatientIhs(resourceId, patient, nik = patient?.no_kt
     return { created: false, failed: true, errorCode: 'PATIENT_DATA_INCOMPLETE' };
   }
 
-  // Audit the exact outbound body before transmission, including validation failures.
   await savePayload(resourceId, 'OUTBOUND', payload);
 
   try {
