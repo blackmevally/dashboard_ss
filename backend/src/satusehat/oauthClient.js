@@ -29,7 +29,10 @@ export async function getAccessToken() {
     client_secret: env.satusehat.clientSecret
   });
 
-  const response = await fetch(env.satusehat.authUrl, {
+  const authUrl = new URL(env.satusehat.authUrl);
+  authUrl.searchParams.set('grant_type', 'client_credentials');
+
+  const response = await fetch(authUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
