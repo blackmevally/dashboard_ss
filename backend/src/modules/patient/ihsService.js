@@ -75,7 +75,8 @@ export async function lookupPatientIhs(resourceId, patient) {
     await markFailure(resourceId, {
       errorCode: 'PATIENT_NIK_INVALID',
       errorMessage: 'NIK pasien Khanza tidak valid atau belum tersedia',
-      httpStatus: null
+      httpStatus: null,
+      retryable: false
     });
 
     return {
@@ -110,7 +111,8 @@ export async function lookupPatientIhs(resourceId, patient) {
         errorCode: 'PATIENT_MULTIPLE_MATCHES',
         errorMessage: 'SATUSEHAT mengembalikan lebih dari satu Patient untuk NIK yang sama; mapping diblokir untuk review',
         httpStatus: result.status,
-        response: result.data
+        response: result.data,
+        retryable: false
       });
       return {
         found: false,
@@ -127,7 +129,8 @@ export async function lookupPatientIhs(resourceId, patient) {
         errorCode: 'PATIENT_IDENTIFIER_MISMATCH',
         errorMessage: 'Response Patient tidak memiliki identifier NIK yang cocok persis; mapping diblokir untuk review',
         httpStatus: result.status,
-        response: result.data
+        response: result.data,
+        retryable: false
       });
       return {
         found: false,
