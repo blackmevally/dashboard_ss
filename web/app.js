@@ -18,25 +18,26 @@ function renderStats(rows) {
 
 function patientActions(p) {
   if (p.satusehat_id) return `<span class="ihs-ok">✓ Terhubung</span><button onclick="showDetail(${Number(p.id)})">Detail</button>`;
-  const retryable = ['FAILED','BLOCKED'].includes(p.status);
-  return `<button onclick="patientLookup('${encodeURIComponent(p.no_rkm_medis)}')">🔍 Lookup IHS</button> <button onclick="patientCreate('${encodeURIComponent(p.no_rkm_medis)}')">➕ Create Patient</button>${retryable ? ` <button onclick="retry(${Number(p.id)})">🔄 Retry</button>` : ''} <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
+  return `<button onclick="patientLookup('${encodeURIComponent(p.no_rkm_medis)}')">🔍 Cek IHS</button> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
 }
 
 function renderPatientCard(p) {
   patientCard.classList.remove('hidden');
-  patientCard.innerHTML = `<div class="patient-main"><div><small>No. RM</small><strong>${esc(p.no_rkm_medis)}</strong></div><div><small>Nama</small><strong>${esc(p.nama)}</strong></div><div><small>NIK</small><strong>${esc(p.nik || '********')}</strong></div><div><small>Status</small><span class="status ${esc(p.status)}">${esc(p.status)}</span></div></div><div class="patient-ihs">${p.satusehat_id ? `<small>IHS ID</small><code>${esc(p.satusehat_id)}</code>` : '<span>Patient belum memiliki IHS ID.</span>'}</div><div class="patient-actions">${patientActions(p)}</div>`;
+  patientCard.innerHTML = `<div class="patient-main"><div><small>No. RM</small><strong>${esc(p.no_rkm_medis)}</strong></div><div><small>Nama</small><strong>${esc(p.nama)}</strong></div><div><small>NIK</small><strong>${esc(p.nik || '********')}</strong></div><div><small>Status</small><span class="status ${esc(p.status)}">${esc(p.status)}</span></div></div><div class="patient-ihs">${p.satusehat_id ? `<small>IHS ID</small><code>${esc(p.satusehat_id)}</code>` : '<span>Patient belum memiliki IHS ID pada control plane.</span>'}</div><div class="patient-actions">${patientActions(p)}</div>`;
 }
 
 async function loadPatient() {
   const noRm = patientSearch.value.trim();
   if (!noRm) return;
-  patientMsg.textContent = 'Mencari...';
+  patientMsg.textContent = 'Mengecek...';
   try {
     const result = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/lookup`, {method:'POST'});
-    patientMsg.textContent = result.created ? 'Patient berhasil dibuat.' : result.found ? 'Patient ditemukan.' : result.failed ? `Gagal: ${result.errorCode}` : 'Selesai.';
+    patientMsg.textContent = result.found ? 'Patient terhubung/ditemukan.' : result.failed ? `Gagal: ${result.errorCode || 'UNKNOWN'}` : 'Pemeriksaan selesai.';
     await load();
-    const resource = (await getJson(`${API}/patients/resource/${result.patient?.resource_id || ''}`)).data;
-    renderPatientCard({...resource, no_rkm_medis: noRm, nama: result.patient?.nama || resource.source_key});
+    if (result.resource_id) {
+      const resource = (await getJson(`${API}/patients/resource/${result.resource_id}`)).data;
+      renderPatientCard({...resource, no_rkm_medis: noRm, nama: result.patient?.nama || resource.source_key});
+    }
   } catch (e) {
     patientMsg.textContent = e.message;
     patientCard.classList.remove('hidden');
@@ -47,18 +48,6 @@ async function loadPatient() {
 async function patientLookup(noRm) {
   patientSearch.value = decodeURIComponent(noRm);
   await loadPatient();
-}
-
-async function patientCreate(noRm) {
-  const value = decodeURIComponent(noRm);
-  if (!confirm(`Create Patient ${value} ke SATUSEHAT?`)) return;
-  patientMsg.textContent = 'Membuat Patient...';
-  try {
-    const result = await getJson(`${API}/patients/${encodeURIComponent(value)}/create`, {method:'POST'});
-    patientMsg.textContent = result.created ? `Berhasil. IHS ID: ${result.patientId}` : result.alreadyMapped ? 'Patient sudah terhubung.' : `Gagal: ${result.errorCode || 'UNKNOWN'}`;
-    await load();
-    await loadPatient();
-  } catch (e) { patientMsg.textContent = e.message; }
 }
 
 async function load() {
@@ -72,17 +61,16 @@ async function load() {
       <td>${esc(r.id)}</td><td>${esc(r.resource_type)}</td><td>${esc(r.source_key)}</td>
       <td><span class="status ${esc(r.status)}">${esc(r.status)}</span></td>
       <td>${esc(r.attempt_count)}/${esc(r.max_attempts)}</td><td>${esc(r.satusehat_id || '-')}</td>
-      <td>${esc(r.updated_at)}</td><td>${r.resource_type === 'Patient' ? patientActions(r) : `<button onclick="showDetail(${Number(r.id)})">Detail</button>${['FAILED','BLOCKED'].includes(r.status)?` <button onclick="retry(${Number(r.id)})">Retry</button>`:''}</td>
+      <td>${esc(r.updated_at)}</td><td>${r.resource_type === 'Patient' ? patientActions(r) : `<button onclick="showDetail(${Number(r.id)})">Detail</button>`}</td>
     </tr>`).join('') || '<tr><td colspan="8">Belum ada resource.</td></tr>';
 
     const errors = await getJson(`${API}/errors?limit=50`);
     errorsEl.innerHTML = errors.data.map(e => `<tr><td>${esc(e.created_at)}</td><td>${esc(e.resource_type)} #${esc(e.resource_id)}</td><td>${esc(e.error_code)} — ${esc(e.error_message)}</td><td>${esc(e.http_status || '-')}</td><td>${esc(e.attempt_no || '-')}</td></tr>`).join('') || '<tr><td colspan="5">Tidak ada error.</td></tr>';
-    health.textContent = 'Control Plane OK'; health.className = 'pill ok';
+    health.textContent = 'MONITORING ONLY'; health.className = 'pill ok';
   } catch (e) { health.textContent = 'API Error'; health.className = 'pill bad'; console.error(e); }
 }
 
 async function showDetail(id) { const result = await getJson(`${API}/resources/${id}`); detailBody.textContent = JSON.stringify(result.data, null, 2); detail.showModal(); }
-async function retry(id) { if (!confirm('Retry resource ini?')) return; await getJson(`${API}/resources/${id}/retry`, {method:'POST',headers:{'Content-Type':'application/json'}}); load(); }
 
 const type = document.querySelector('#type');
 const status = document.querySelector('#status');
