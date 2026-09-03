@@ -1,7 +1,7 @@
 const API = window.DASHBOARD_API || 'http://localhost:3000/api';
 const statuses = ['DISCOVERED','MAPPED','READY','PROCESSING','SUCCESS','RETRY','FAILED','BLOCKED','WAITING_DEPENDENCY'];
 
-const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = value => String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
 
 async function getJson(url, options) {
   const response = await fetch(url, options);
@@ -16,14 +16,27 @@ function renderStats(rows) {
   document.querySelector('#stats').innerHTML = statuses.map(s => `<div class="stat"><b>${summary[s]}</b><span>${s}</span></div>`).join('');
 }
 
+function resolutionFor(p) {
+  if (p.satusehat_id) return 'MATCHED';
+  if (p.error_code === 'PATIENT_MULTIPLE_MATCHES') return 'AMBIGUOUS';
+  if (p.error_code === 'PATIENT_IDENTIFIER_MISMATCH' || p.error_code === 'PATIENT_NIK_INVALID') return 'REVIEW';
+  if (p.error_code === 'PATIENT_NOT_FOUND') return 'NOT_FOUND';
+  if (p.status === 'FAILED') return 'REVIEW';
+  return null;
+}
+
 function patientActions(p) {
-  if (p.satusehat_id) return `<span class="ihs-ok">✓ Terhubung</span><button onclick="showDetail(${Number(p.id)})">Detail</button>`;
+  if (p.satusehat_id || p.status === 'SUCCESS') return `<span class="ihs-ok">✓ Terhubung</span><button onclick="showDetail(${Number(p.id)})">Detail</button>`;
+  if (p.status === 'FAILED') return `<span class="review-badge">Review manual</span> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
+  if (p.status === 'PROCESSING') return `<span class="muted">Sedang diproses</span> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
   return `<button onclick="patientLookup('${encodeURIComponent(p.no_rkm_medis)}')">🔍 Cek IHS</button> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
 }
 
 function renderPatientCard(p) {
+  const resolution = resolutionFor(p);
+  const errorBlock = p.error_code ? `<div class="patient-review"><div><small>Error</small><strong>${esc(p.error_code)}</strong></div><div><small>Resolution</small><strong>${esc(resolution || 'REVIEW')}</strong></div><div><small>Auto-retry</small><strong>${p.status === 'FAILED' ? 'Disabled' : 'Managed by queue'}</strong></div><div><small>Auto-create</small><strong>Disabled</strong></div></div>` : '';
   patientCard.classList.remove('hidden');
-  patientCard.innerHTML = `<div class="patient-main"><div><small>No. RM</small><strong>${esc(p.no_rkm_medis)}</strong></div><div><small>Nama</small><strong>${esc(p.nama)}</strong></div><div><small>NIK</small><strong>${esc(p.nik || '********')}</strong></div><div><small>Status</small><span class="status ${esc(p.status)}">${esc(p.status)}</span></div></div><div class="patient-ihs">${p.satusehat_id ? `<small>IHS ID</small><code>${esc(p.satusehat_id)}</code>` : '<span>Patient belum memiliki IHS ID pada control plane.</span>'}</div><div class="patient-actions">${patientActions(p)}</div>`;
+  patientCard.innerHTML = `<div class="patient-main"><div><small>No. RM</small><strong>${esc(p.no_rkm_medis)}</strong></div><div><small>Nama</small><strong>${esc(p.nama)}</strong></div><div><small>NIK</small><strong>${esc(p.nik || '********')}</strong></div><div><small>Status</small><span class="status ${esc(p.status)}">${esc(p.status)}</span></div></div><div class="patient-ihs">${p.satusehat_id ? `<small>IHS ID</small><code>${esc(p.satusehat_id)}</code>` : '<span>Patient belum memiliki IHS ID pada control plane.</span>'}</div>${errorBlock}<div class="patient-actions">${patientActions(p)}</div>`;
 }
 
 async function loadPatient() {
