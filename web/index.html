@@ -8,10 +8,14 @@
 </head>
 <body>
   <header class="topbar">
-    <div><h1>Dashboard SATUSEHAT</h1><p>Khanza Integration Control Plane</p></div>
-    <span id="health" class="pill">Checking...</span>
+    <div><h1>Dashboard SATUSEHAT</h1><p>Monitoring & Error Advisory — Khanza Integration</p></div>
+    <div><span class="pill">MONITORING ONLY</span> <span id="health" class="pill">Checking...</span></div>
   </header>
   <main>
+    <section class="notice">
+      <strong>Mode aman aktif.</strong>
+      Dashboard ini hanya membaca status integrasi, error, response dan mapping IHS untuk analisis. Tidak ada auto-send, auto-retry, auto-create, atau perubahan data SATUSEHAT dari UI.
+    </section>
     <section id="stats" class="stats"></section>
     <section class="toolbar">
       <select id="type"><option value="">Semua resource</option><option>Patient</option><option>Practitioner</option><option>Organization</option><option>Location</option><option>Encounter</option></select>
@@ -19,11 +23,11 @@
       <button id="refresh">Refresh</button>
     </section>
     <section class="panel patient-panel">
-      <div class="panel-head"><div><h2>Patient IHS</h2><p>Lookup dan sinkronisasi Patient dari Khanza ke SATUSEHAT.</p></div><button id="patientSearchBtn">Cari</button></div>
+      <div class="panel-head"><div><h2>Patient IHS</h2><p>Pemeriksaan status Patient/IHS tanpa membuat atau mengubah Patient.</p></div><button id="patientSearchBtn">Cek</button></div>
       <div class="patient-search"><input id="patientSearch" placeholder="No. RM Khanza" autocomplete="off"><span id="patientMsg"></span></div>
       <div id="patientCard" class="patient-card hidden"></div>
     </section>
-    <section class="panel"><h2>Resource Queue</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Type</th><th>Source Key</th><th>Status</th><th>Attempt</th><th>SATUSEHAT ID</th><th>Updated</th><th></th></tr></thead><tbody id="resources"></tbody></table></div></section>
+    <section class="panel"><h2>Resource Monitoring</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Type</th><th>Source Key</th><th>Status</th><th>Attempt</th><th>SATUSEHAT ID</th><th>Updated</th><th></th></tr></thead><tbody id="resources"></tbody></table></div></section>
     <section class="panel"><h2>Error Center</h2><div class="table-wrap"><table><thead><tr><th>Time</th><th>Resource</th><th>Error</th><th>HTTP</th><th>Attempt</th></tr></thead><tbody id="errors"></tbody></table></div></section>
   </main>
   <dialog id="detail"><button class="close" onclick="detail.close()">×</button><pre id="detailBody"></pre></dialog>
