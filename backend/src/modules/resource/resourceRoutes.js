@@ -50,7 +50,11 @@ resourceRouter.get('/monitoring', async (_req, res, next) => {
           COUNT(*) FILTER (WHERE status = 'BLOCKED')::int AS blocked,
           COUNT(*) FILTER (WHERE status = 'WAITING_DEPENDENCY')::int AS waiting_dependency,
           COUNT(*) FILTER (WHERE status IN ('DISCOVERED','MAPPED','READY'))::int AS pending,
-          COUNT(*) FILTER (WHERE satusehat_id IS NOT NULL)::int AS mapped
+          COUNT(*) FILTER (WHERE satusehat_id IS NOT NULL)::int AS mapped,
+          COUNT(*) FILTER (
+            WHERE status = 'PROCESSING'
+              AND COALESCE(locked_at, updated_at) < CURRENT_TIMESTAMP - INTERVAL '10 minutes'
+          )::int AS stale_processing
         FROM integration_resource
       `),
       controlDb.query(`
@@ -59,6 +63,10 @@ resourceRouter.get('/monitoring', async (_req, res, next) => {
                COUNT(*) FILTER (WHERE status = 'SUCCESS')::int AS success,
                COUNT(*) FILTER (WHERE status IN ('FAILED','BLOCKED'))::int AS failed,
                COUNT(*) FILTER (WHERE status IN ('RETRY','PROCESSING'))::int AS active,
+               COUNT(*) FILTER (
+                 WHERE status = 'PROCESSING'
+                   AND COALESCE(locked_at, updated_at) < CURRENT_TIMESTAMP - INTERVAL '10 minutes'
+               )::int AS stale_processing,
                MAX(updated_at) AS last_activity
         FROM integration_resource
         GROUP BY resource_type
@@ -83,12 +91,24 @@ resourceRouter.get('/monitoring', async (_req, res, next) => {
       `)
     ]);
 
+    const snapshot = resources.rows[0] || {};
+    const critical = Number(snapshot.failed || 0) + Number(snapshot.blocked || 0);
+    const stale = Number(snapshot.stale_processing || 0);
+    const health = critical > 0 || stale > 0 ? 'CRITICAL' : Number(snapshot.retry || 0) + Number(snapshot.waiting_dependency || 0) > 0 ? 'WARNING' : 'HEALTHY';
+
     res.json({
       ok: true,
       data: {
         mode: 'MONITORING_ONLY',
         generated_at: new Date().toISOString(),
-        resources: resources.rows[0],
+        health,
+        health_reasons: {
+          failed_or_blocked: critical,
+          stale_processing: stale,
+          retry: Number(snapshot.retry || 0),
+          waiting_dependency: Number(snapshot.waiting_dependency || 0)
+        },
+        resources: snapshot,
         by_type: byType.rows,
         flow: flow.rows[0],
         recent_failures: recentFailures.rows
