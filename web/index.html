@@ -8,15 +8,20 @@
 </head>
 <body>
   <header class="topbar">
-    <div><h1>Dashboard SATUSEHAT</h1><p>Monitoring & Error Advisory — Khanza Integration</p></div>
+    <div><h1>Dashboard SATUSEHAT</h1><p>Monitoring aliran data — SIMRS Khanza → SATUSEHAT</p></div>
     <div><span class="pill">MONITORING ONLY</span> <span id="health" class="pill">Checking...</span></div>
   </header>
   <main>
     <section class="notice">
       <strong>Mode aman aktif.</strong>
-      Dashboard ini hanya membaca status integrasi, error, response dan mapping IHS untuk analisis. Tidak ada auto-send, auto-retry, auto-create, atau perubahan data SATUSEHAT dari UI.
+      Dashboard membaca seluruh resource control-plane, state processing, dependency, response dan error. Tidak ada auto-send, auto-create, atau perubahan data Khanza/SATUSEHAT dari UI.
     </section>
     <section id="stats" class="stats"></section>
+    <section class="panel">
+      <div class="panel-head"><div><h2>Aliran Data</h2><p id="flowMsg">Memuat kondisi pipeline...</p></div><span id="lastUpdate" class="muted"></span></div>
+      <div id="flowStats" class="stats"></div>
+      <div class="table-wrap"><table><thead><tr><th>Resource</th><th>Total</th><th>Success</th><th>Gagal</th><th>Aktif</th><th>Aktivitas terakhir</th></tr></thead><tbody id="resourceTypes"></tbody></table></div>
+    </section>
     <section class="toolbar">
       <select id="type"><option value="">Semua resource</option><option>Patient</option><option>Practitioner</option><option>Organization</option><option>Location</option><option>Encounter</option></select>
       <select id="status"><option value="">Semua status</option><option>DISCOVERED</option><option>MAPPED</option><option>READY</option><option>PROCESSING</option><option>SUCCESS</option><option>RETRY</option><option>FAILED</option><option>BLOCKED</option><option>WAITING_DEPENDENCY</option></select>
