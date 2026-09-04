@@ -21,18 +21,27 @@ function renderMonitoring(snapshot) {
   const f = snapshot.flow || {};
   const failed = Number(r.failed || 0) + Number(r.blocked || 0);
   const active = Number(r.retry || 0) + Number(r.processing || 0) + Number(r.waiting_dependency || 0);
-  flowMsg.textContent = failed > 0
-    ? `${failed} resource gagal/terblokir — buka Error Center untuk saran perbaikan.`
-    : active > 0 ? `${active} resource masih aktif diproses/menunggu.` : 'Pipeline tidak memiliki resource gagal/terblokir.';
+  const stale = Number(r.stale_processing || 0);
+  const healthState = snapshot.health || 'HEALTHY';
+  const healthReasons = snapshot.health_reasons || {};
+  const healthText = healthState === 'CRITICAL'
+    ? `Kritis: ${Number(healthReasons.failed_or_blocked || 0)} gagal/blocked, ${stale} processing macet.`
+    : healthState === 'WARNING'
+      ? `Perlu perhatian: ${Number(healthReasons.retry || 0)} retry, ${Number(healthReasons.waiting_dependency || 0)} menunggu dependency.`
+      : 'Pipeline sehat — tidak ada gagal/blocked atau processing yang terindikasi macet.';
+  flowMsg.textContent = healthText;
   lastUpdate.textContent = snapshot.generated_at ? `Snapshot ${new Date(snapshot.generated_at).toLocaleString('id-ID')}` : '';
+  health.textContent = `PIPELINE ${healthState}`;
+  health.className = `pill ${healthState === 'HEALTHY' ? 'ok' : healthState === 'WARNING' ? 'warn' : 'bad'}`;
   flowStats.innerHTML = [
     ['Total resource', r.total], ['SUCCESS', r.success], ['Gagal/blocked', failed],
-    ['Aktif', active], ['Terpetakan IHS', r.mapped], ['Response 2xx', f.successful_responses || 0]
+    ['Aktif', active], ['Processing macet', stale], ['Terpetakan IHS', r.mapped],
+    ['Response 2xx', f.successful_responses || 0]
   ].map(([label, value]) => `<div class="stat"><b>${esc(value)}</b><span>${esc(label)}</span></div>`).join('');
   resourceTypes.innerHTML = (snapshot.by_type || []).map(row => `<tr>
     <td>${esc(row.resource_type)}</td><td>${esc(row.total)}</td><td>${esc(row.success)}</td>
-    <td>${esc(row.failed)}</td><td>${esc(row.active)}</td><td>${esc(row.last_activity || '-')}</td>
-  </tr>`).join('') || '<tr><td colspan="6">Belum ada resource.</td></tr>';
+    <td>${esc(row.failed)}</td><td>${esc(row.active)}</td><td>${esc(row.stale_processing)}</td><td>${esc(row.last_activity || '-')}</td>
+  </tr>`).join('') || '<tr><td colspan="7">Belum ada resource.</td></tr>';
 }
 
 function resolutionFor(p) {
@@ -118,7 +127,6 @@ async function load() {
       <td><strong>${esc(e.error_code)}</strong><br><small>${esc(e.error_message)}</small></td>
       <td>${esc(e.http_status || '-')}</td><td>${esc(e.attempt_no || '-')}</td><td>${advisoryMarkup(e.advisory)}</td>
     </tr>`).join('') || '<tr><td colspan="6">Tidak ada error.</td></tr>';
-    health.textContent = 'MONITORING ONLY'; health.className = 'pill ok';
   } catch (e) { health.textContent = 'API Error'; health.className = 'pill bad'; console.error(e); }
 }
 
