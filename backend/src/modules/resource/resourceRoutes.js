@@ -13,17 +13,87 @@ resourceRouter.get('/', async (req, res, next) => {
     if (req.query.status) { params.push(req.query.status); where.push(`status = $${params.length}`); }
     if (req.query.no_rawat) { params.push(req.query.no_rawat); where.push(`no_rawat = $${params.length}`); }
     if (req.query.no_rkm_medis) { params.push(req.query.no_rkm_medis); where.push(`no_rkm_medis = $${params.length}`); }
+    const countParams = [...params];
     params.push(limit, offset);
-    const result = await controlDb.query(`
-      SELECT id, resource_type, source_system, source_table, source_key, no_rawat,
-             no_rkm_medis, satusehat_id, status, attempt_count, max_attempts,
-             next_retry_at, http_status, error_code, error_message,
-             first_seen_at, last_attempt_at, last_success_at, updated_at
-      FROM integration_resource
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}
-    `, params);
-    res.json({ ok: true, data: result.rows, pagination: { limit, offset, count: result.rowCount } });
+    const [result, count] = await Promise.all([
+      controlDb.query(`
+        SELECT id, resource_type, source_system, source_table, source_key, no_rawat,
+               no_rkm_medis, satusehat_id, status, attempt_count, max_attempts,
+               next_retry_at, locked_at, locked_by, http_status, error_code, error_message,
+               first_seen_at, last_attempt_at, last_success_at, updated_at
+        FROM integration_resource
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}
+      `, params),
+      controlDb.query(`
+        SELECT COUNT(*)::int AS count
+        FROM integration_resource
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      `, countParams)
+    ]);
+    res.json({ ok: true, data: result.rows, pagination: { limit, offset, count: result.rowCount, total: count.rows[0]?.count ?? 0 } });
+  } catch (error) { next(error); }
+});
+
+// Single read model for the dashboard: the complete integration flow across
+// Khanza resources, processing states, dependencies, responses and failures.
+resourceRouter.get('/monitoring', async (_req, res, next) => {
+  try {
+    const [resources, byType, recentFailures, flow] = await Promise.all([
+      controlDb.query(`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'SUCCESS')::int AS success,
+          COUNT(*) FILTER (WHERE status = 'FAILED')::int AS failed,
+          COUNT(*) FILTER (WHERE status = 'RETRY')::int AS retry,
+          COUNT(*) FILTER (WHERE status = 'PROCESSING')::int AS processing,
+          COUNT(*) FILTER (WHERE status = 'BLOCKED')::int AS blocked,
+          COUNT(*) FILTER (WHERE status = 'WAITING_DEPENDENCY')::int AS waiting_dependency,
+          COUNT(*) FILTER (WHERE status IN ('DISCOVERED','MAPPED','READY'))::int AS pending,
+          COUNT(*) FILTER (WHERE satusehat_id IS NOT NULL)::int AS mapped
+        FROM integration_resource
+      `),
+      controlDb.query(`
+        SELECT resource_type,
+               COUNT(*)::int AS total,
+               COUNT(*) FILTER (WHERE status = 'SUCCESS')::int AS success,
+               COUNT(*) FILTER (WHERE status IN ('FAILED','BLOCKED'))::int AS failed,
+               COUNT(*) FILTER (WHERE status IN ('RETRY','PROCESSING'))::int AS active,
+               MAX(updated_at) AS last_activity
+        FROM integration_resource
+        GROUP BY resource_type
+        ORDER BY resource_type
+      `),
+      controlDb.query(`
+        SELECT e.id, e.resource_id, e.attempt_no, e.error_code, e.error_message,
+               e.http_status, e.created_at, r.resource_type, r.source_key,
+               r.no_rkm_medis, r.status
+        FROM integration_error e
+        JOIN integration_resource r ON r.id = e.resource_id
+        ORDER BY e.id DESC
+        LIMIT 20
+      `),
+      controlDb.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE direction = 'OUTBOUND')::int AS outbound_payloads,
+          COUNT(*) FILTER (WHERE direction = 'INBOUND')::int AS inbound_payloads,
+          COUNT(*) FILTER (WHERE http_status BETWEEN 200 AND 299)::int AS successful_responses,
+          COUNT(*) FILTER (WHERE http_status >= 400)::int AS failed_responses
+        FROM integration_payload
+      `)
+    ]);
+
+    res.json({
+      ok: true,
+      data: {
+        mode: 'MONITORING_ONLY',
+        generated_at: new Date().toISOString(),
+        resources: resources.rows[0],
+        by_type: byType.rows,
+        flow: flow.rows[0],
+        recent_failures: recentFailures.rows
+      }
+    });
   } catch (error) { next(error); }
 });
 
