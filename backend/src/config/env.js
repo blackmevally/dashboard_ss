@@ -7,6 +7,7 @@ const required = (name) => {
 };
 
 const optional = (name, fallback = '') => process.env[name] || fallback;
+const booleanEnv = (name, fallback = false) => String(process.env[name] ?? fallback).toLowerCase() === 'true';
 
 const environment = String(process.env.ENVIRONMENT || 'SANDBOX').trim().toUpperCase();
 if (!['SANDBOX', 'PRODUCTION'].includes(environment)) {
@@ -50,8 +51,11 @@ export const env = {
     ssl: process.env.KHANZA_DB_SSL === 'true'
   },
   satusehat: {
-    enabled: process.env.SATUSEHAT_ENABLED === 'true',
+    enabled: booleanEnv('SATUSEHAT_ENABLED'),
     environment,
+    // Patient creation is disabled by default and must never be enabled
+    // implicitly by switching environments.
+    patientCreateEnabled: booleanEnv('SATUSEHAT_PATIENT_CREATE_ENABLED'),
     ...satusehatConfig
   }
 };
