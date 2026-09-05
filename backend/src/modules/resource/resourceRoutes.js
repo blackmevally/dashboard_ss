@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { controlDb } from '../../database/pool.js';
+import { retryResource } from '../../queue/resourceQueue.js';
 
 export const resourceRouter = Router();
 
@@ -143,6 +144,44 @@ resourceRouter.get('/summary', async (_req, res, next) => {
         errors_24h: errors.rows[0]?.count ?? 0,
         client_rejections: rejected.rows[0]?.count ?? 0,
         mode: 'MONITORING_ONLY'
+      }
+    });
+  } catch (error) { next(error); }
+});
+
+// Explicit manual recovery control. It only moves FAILED/BLOCKED resources
+// to RETRY; the worker remains responsible for actual processing.
+resourceRouter.post('/:id/retry', async (req, res, next) => {
+  try {
+    const resourceId = Number(req.params.id);
+    if (!Number.isInteger(resourceId) || resourceId <= 0) {
+      return res.status(400).json({ ok: false, error: 'INVALID_RESOURCE_ID' });
+    }
+
+    const resource = await retryResource(resourceId);
+    if (!resource) {
+      const current = await controlDb.query(
+        'SELECT id, resource_type, source_key, status, attempt_count, max_attempts, error_code, error_message FROM integration_resource WHERE id = $1',
+        [resourceId]
+      );
+      if (!current.rows.length) return res.status(404).json({ ok: false, error: 'RESOURCE_NOT_FOUND' });
+      return res.status(409).json({
+        ok: false,
+        error: 'RESOURCE_NOT_RETRYABLE',
+        data: current.rows[0]
+      });
+    }
+
+    res.json({
+      ok: true,
+      mode: 'MANUAL_RETRY',
+      data: {
+        resource_id: resource.id,
+        resource_type: resource.resource_type,
+        source_key: resource.source_key,
+        status: resource.status,
+        attempt_count: resource.attempt_count,
+        next_retry_at: resource.next_retry_at
       }
     });
   } catch (error) { next(error); }
