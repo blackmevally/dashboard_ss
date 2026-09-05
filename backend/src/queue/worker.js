@@ -30,10 +30,9 @@ async function log(message, context = {}) {
 
 async function processOne() {
   // SATUSEHAT must be explicitly enabled before any outbound call is attempted.
-  if (!env.satusehatEnabled) return false;
+  if (!env.satusehat.enabled) return false;
 
-  // Only claim resources for which a real handler is registered. This keeps the
-  // foundation safe while Practitioner/etc. handlers are added.
+  // Only claim resources for which a real handler is registered.
   const types = process.env.WORKER_RESOURCE_TYPES
     ? process.env.WORKER_RESOURCE_TYPES.split(',').map((v) => v.trim()).filter(Boolean)
     : [...handlers.keys()];
@@ -79,11 +78,15 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 async function run() {
-  if (!env.satusehatEnabled) {
+  if (!env.satusehat.enabled) {
     console.log(`[${WORKER_ID}] SATUSEHAT is disabled; worker is idle until enabled.`);
   }
-  console.log(`[${WORKER_ID}] started; poll=${POLL_MS}ms`);
-  await log('Worker started', { pollMs: POLL_MS, satusehatEnabled: env.satusehatEnabled });
+  console.log(`[${WORKER_ID}] started; poll=${POLL_MS}ms environment=${env.environment}`);
+  await log('Worker started', {
+    pollMs: POLL_MS,
+    satusehatEnabled: env.satusehat.enabled,
+    environment: env.environment
+  });
   await logPatientHandlerReady();
 
   while (!stopping) {
