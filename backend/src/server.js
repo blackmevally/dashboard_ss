@@ -61,6 +61,54 @@ app.get('/health', async (_req, res) => {
   res.status(result.status === 'ok' ? 200 : 503).json(result);
 });
 
+// Read-only production go-live gate. It never calls SATUSEHAT and never
+// changes source/control-plane data, so operators can inspect readiness safely.
+app.get('/api/production-readiness', async (_req, res) => {
+  const checks = {
+    environment_production: env.environment === 'PRODUCTION',
+    satusehat_enabled: env.satusehat.enabled,
+    production_satusehat_configured: env.environment !== 'PRODUCTION' || Boolean(
+      env.satusehat.baseUrl &&
+      env.satusehat.authUrl &&
+      env.satusehat.clientId &&
+      env.satusehat.clientSecret &&
+      env.satusehat.organizationId
+    ),
+    dashboard_api_key_configured: env.environment !== 'PRODUCTION' || env.dashboard.apiKey.length >= 32,
+    exact_cors_allowlist: env.dashboard.allowedOrigins.length > 0 && !env.dashboard.allowedOrigins.includes('*'),
+    patient_create_disabled: env.satusehat.patientCreateEnabled === false,
+    control_plane_database: false,
+    khanza_database: false,
+    no_migration_required: true
+  };
+
+  try {
+    await controlDb.query('SELECT 1');
+    checks.control_plane_database = true;
+  } catch {}
+
+  try {
+    await khanzaDb.query('SELECT 1');
+    checks.khanza_database = true;
+  } catch {}
+
+  const blocking = Object.entries(checks)
+    .filter(([, value]) => value === false)
+    .map(([name]) => name);
+  const ready = blocking.length === 0;
+
+  res.status(ready ? 200 : 409).json({
+    ok: ready,
+    mode: 'READ_ONLY_GO_LIVE_GATE',
+    satusehat_live_call_performed: false,
+    source_data_mutated: false,
+    control_plane_mutated: false,
+    checks,
+    blocking_checks: blocking,
+    decision: ready ? 'GO_CANDIDATE' : 'NO_GO'
+  });
+});
+
 app.get('/api', (_req, res) => {
   res.json({
     name: 'SATUSEHAT Control Plane API',
