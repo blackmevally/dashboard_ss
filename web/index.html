@@ -9,12 +9,11 @@
 <body>
   <header class="topbar">
     <div><h1>Dashboard SATUSEHAT</h1><p>Monitoring aliran data — SIMRS Khanza → SATUSEHAT</p></div>
-    <div><span class="pill">MONITORING ONLY</span> <span id="health" class="pill">Checking...</span></div>
+    <div><span id="environment" class="pill">ENV: --</span> <span class="pill">MONITORING ONLY</span> <span id="health" class="pill">Checking...</span></div>
   </header>
   <main>
     <section class="notice">
-      <strong>Mode aman aktif.</strong>
-      Dashboard membaca seluruh resource control-plane, state processing, dependency, response dan error. Tidak ada auto-send, auto-create, atau perubahan data Khanza/SATUSEHAT dari UI.
+      <strong>Mode aman aktif.</strong> Dashboard membaca seluruh resource control-plane, state processing, dependency, response dan error. Tidak ada auto-send, auto-create, atau perubahan data Khanza/SATUSEHAT dari UI.
     </section>
     <section id="stats" class="stats"></section>
     <section class="panel">
@@ -28,7 +27,7 @@
       <button id="refresh">Refresh</button>
     </section>
     <section class="panel patient-panel">
-      <div class="panel-head"><div><h2>Patient IHS</h2><p>Pemeriksaan status Patient/IHS tanpa membuat atau mengubah Patient.</p></div><button id="patientSearchBtn">Cari</button></div>
+      <div class="panel-head"><div><h2>Patient IHS</h2><p>Persiapan alur Patient: Khanza → mapping → queue → lookup SATUSEHAT.</p></div><button id="patientSearchBtn">Cari</button></div>
       <div class="patient-search"><input id="patientSearch" placeholder="No. RM Khanza" autocomplete="off"><span id="patientMsg"></span></div>
       <div id="patientCard" class="patient-card hidden"></div>
     </section>
