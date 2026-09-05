@@ -5,6 +5,7 @@ import { patientRouter } from './modules/patient/patientRoutes.js';
 import { patientIhsRouter } from './modules/patient/patientIhsRoutes.js';
 import { resourceRouter } from './modules/resource/resourceRoutes.js';
 import { advisoryRouter } from './modules/advisory/advisoryRoutes.js';
+import { requireOperationalAccess } from './security/operationalAccess.js';
 
 const app = express();
 app.use((req, res, next) => {
@@ -14,8 +15,11 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Dashboard-Api-Key');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
@@ -30,6 +34,10 @@ app.get('/health', async (_req, res) => {
       enabled: env.satusehat.enabled,
       environment: env.satusehat.environment,
       patient_create_enabled: env.satusehat.patientCreateEnabled
+    },
+    operational_access: {
+      post_protection: env.environment === 'PRODUCTION',
+      api_key_configured: Boolean(env.dashboard.apiKey)
     },
     database: { control_plane: 'unknown', khanza: 'unknown' }
   };
@@ -60,10 +68,14 @@ app.get('/api', (_req, res) => {
     mode: 'Khanza source-of-truth / integration control-plane',
     environment: env.environment,
     satusehat_enabled: env.satusehat.enabled,
-    patient_create_enabled: env.satusehat.patientCreateEnabled
+    patient_create_enabled: env.satusehat.patientCreateEnabled,
+    operational_post_protection: env.environment === 'PRODUCTION'
   });
 });
 
+// Monitoring GET endpoints remain readable. All operational POST actions are
+// protected by X-Dashboard-Api-Key when ENVIRONMENT=PRODUCTION.
+app.use('/api', requireOperationalAccess);
 app.use('/api/patients', patientRouter);
 app.use('/api/patients', patientIhsRouter);
 app.use('/api/resources', resourceRouter);
