@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { controlDb } from '../database/pool.js';
 import { claimNextResource, markFailure } from './resourceQueue.js';
 import { env } from '../config/env.js';
+import { processPatientResource, logPatientHandlerReady } from '../modules/patient/patientWorker.js';
 
 const WORKER_ID = `worker-${crypto.randomUUID()}`;
 const POLL_MS = Number(process.env.WORKER_POLL_MS || 3000);
@@ -17,6 +18,8 @@ export function registerHandler(resourceType, handler) {
   handlers.set(resourceType, handler);
 }
 
+registerHandler('Patient', processPatientResource);
+
 async function log(message, context = {}) {
   await controlDb.query(
     `INSERT INTO integration_log (level, component, message, context)
@@ -26,8 +29,11 @@ async function log(message, context = {}) {
 }
 
 async function processOne() {
+  // SATUSEHAT must be explicitly enabled before any outbound call is attempted.
+  if (!env.satusehatEnabled) return false;
+
   // Only claim resources for which a real handler is registered. This keeps the
-  // foundation safe while Patient/Practitioner/etc. handlers are added.
+  // foundation safe while Practitioner/etc. handlers are added.
   const types = process.env.WORKER_RESOURCE_TYPES
     ? process.env.WORKER_RESOURCE_TYPES.split(',').map((v) => v.trim()).filter(Boolean)
     : [...handlers.keys()];
@@ -78,6 +84,7 @@ async function run() {
   }
   console.log(`[${WORKER_ID}] started; poll=${POLL_MS}ms`);
   await log('Worker started', { pollMs: POLL_MS, satusehatEnabled: env.satusehatEnabled });
+  await logPatientHandlerReady();
 
   while (!stopping) {
     try {
