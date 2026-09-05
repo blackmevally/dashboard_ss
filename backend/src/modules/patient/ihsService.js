@@ -65,9 +65,11 @@ async function savePayload(resourceId, direction, payload, httpStatus = null, re
   );
 }
 
-export async function lookupPatientIhs(resourceId, patient) {
-  const processing = await setProcessing(resourceId);
-  if (!processing) throw new Error('Patient resource is not in a processable state');
+export async function lookupPatientIhs(resourceId, patient, alreadyProcessing = false) {
+  if (!alreadyProcessing) {
+    const processing = await setProcessing(resourceId);
+    if (!processing) throw new Error('Patient resource is not in a processable state');
+  }
 
   const nik = String(patient?.no_ktp || '').trim();
 
@@ -163,9 +165,9 @@ export async function lookupPatientIhs(resourceId, patient) {
       errorMessage: error.message,
       httpStatus: error.httpStatus || null,
       response: error.response || null,
-      retryable: false
+      retryable: true
     });
-    return { found: false, created: false, failed: true, errorCode: error.code || 'IHS_LOOKUP_FAILED', resolution: 'REVIEW', candidates: [] };
+    return { found: false, created: false, failed: true, errorCode: error.code || 'IHS_LOOKUP_FAILED', resolution: 'RETRY', candidates: [] };
   }
 }
 
