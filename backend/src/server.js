@@ -28,7 +28,8 @@ app.get('/health', async (_req, res) => {
     environment: env.environment,
     satusehat: {
       enabled: env.satusehat.enabled,
-      environment: env.satusehat.environment
+      environment: env.satusehat.environment,
+      patient_create_enabled: env.satusehat.patientCreateEnabled
     },
     database: { control_plane: 'unknown', khanza: 'unknown' }
   };
@@ -58,7 +59,8 @@ app.get('/api', (_req, res) => {
     version: '0.1.0',
     mode: 'Khanza source-of-truth / integration control-plane',
     environment: env.environment,
-    satusehat_enabled: env.satusehat.enabled
+    satusehat_enabled: env.satusehat.enabled,
+    patient_create_enabled: env.satusehat.patientCreateEnabled
   });
 });
 
