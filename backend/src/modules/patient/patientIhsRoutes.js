@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { findPatientByMedicalRecord } from './patientRepository.js';
 import { getPatientResource } from './patientIhsRepository.js';
 import { lookupPatientIhs, maskNik } from './ihsService.js';
+import { discoverAndPreparePatient } from './patientDiscovery.js';
 import { controlDb } from '../../database/pool.js';
 
 export const patientIhsRouter = Router();
@@ -23,6 +24,22 @@ const publicPatient = patient => ({
   no_rkm_medis: patient.no_rkm_medis,
   nama: patient.nm_pasien,
   nik: maskNik(patient.no_ktp)
+});
+
+// Explicit PHASE 7B action: discover one Khanza Patient and move only the
+// control-plane resource through DISCOVERED -> MAPPED -> READY.
+patientIhsRouter.post('/:noRkmMedis/prepare', async (req, res, next) => {
+  try {
+    const result = await discoverAndPreparePatient(req.params.noRkmMedis);
+    if (!result) return res.status(404).json({ ok: false, error: 'PATIENT_NOT_FOUND' });
+    res.json({
+      ok: true,
+      resource_id: result.resource.id,
+      patient: publicPatient(result.patient),
+      status: result.resource.status,
+      mode: 'CONTROL_PLANE_PREPARE'
+    });
+  } catch (error) { next(error); }
 });
 
 // Monitoring only: lookup reads SATUSEHAT state but does not create or update Patient.
