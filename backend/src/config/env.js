@@ -34,6 +34,9 @@ export const env = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
   environment,
+  dashboard: {
+    apiKey: optional('DASHBOARD_API_KEY')
+  },
   postgres: {
     host: required('PGHOST'),
     port: Number(process.env.PGPORT || 5432),
@@ -59,6 +62,12 @@ export const env = {
     ...satusehatConfig
   }
 };
+
+if (environment === 'PRODUCTION') {
+  if (env.dashboard.apiKey.length < 32) {
+    throw new Error('Production DASHBOARD_API_KEY must be at least 32 characters');
+  }
+}
 
 if (environment === 'PRODUCTION' && env.satusehat.enabled) {
   const missing = ['baseUrl', 'authUrl', 'clientId', 'clientSecret', 'organizationId']
