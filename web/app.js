@@ -57,7 +57,7 @@ function patientActions(p) {
   if (p.satusehat_id || p.status === 'SUCCESS') return `<span class="ihs-ok">✓ Terhubung</span><button onclick="showDetail(${Number(p.id)})">Detail</button>`;
   if (p.status === 'FAILED') return `<span class="review-badge">Review manual</span> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
   if (p.status === 'PROCESSING') return `<span class="muted">Sedang diproses</span> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
-  return `<button onclick="patientLookup('${encodeURIComponent(p.no_rkm_medis)}')">🔍 Cek IHS</button> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
+  return `<button onclick="patientLookup('${encodeURIComponent(p.no_rkm_medis)}')">🔍 Siapkan Patient</button> <button onclick="showDetail(${Number(p.id)})">Detail</button>`;
 }
 
 function renderPatientCard(p) {
@@ -70,29 +70,13 @@ function renderPatientCard(p) {
 async function loadPatient() {
   const noRm = patientSearch.value.trim();
   if (!noRm) return;
-  patientMsg.textContent = 'Mengecek...';
+  patientMsg.textContent = 'Mempersiapkan alur Patient...';
   try {
-    const resources = await getJson(`${API}/resources?type=Patient&limit=200`);
-    const existing = resources.data.find(r => String(r.no_rkm_medis || r.source_key || '') === noRm);
-    if (existing && existing.status === 'FAILED') {
-      const profile = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/profile`);
-      patientMsg.textContent = `Review manual: ${existing.error_code || 'FAILED'}`;
-      const resource = (await getJson(`${API}/patients/resource/${existing.id}`)).data;
-      renderPatientCard({ ...existing, ...resource, ...profile.patient, no_rkm_medis: noRm }); return;
-    }
-    if (existing && (existing.status === 'PROCESSING' || existing.status === 'SUCCESS')) {
-      const profile = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/profile`);
-      patientMsg.textContent = existing.status === 'SUCCESS' ? 'Patient terhubung/ditemukan.' : 'Patient sedang diproses.';
-      const resource = (await getJson(`${API}/patients/resource/${existing.id}`)).data;
-      renderPatientCard({ ...existing, ...resource, ...profile.patient, no_rkm_medis: noRm }); return;
-    }
-    const result = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/lookup`, {method:'POST'});
-    patientMsg.textContent = result.found ? 'Patient terhubung/ditemukan.' : result.failed ? `Gagal: ${result.errorCode || 'UNKNOWN'}` : 'Pemeriksaan selesai.';
+    const prepared = await getJson(`${API}/patients/${encodeURIComponent(noRm)}/prepare`, { method: 'POST' });
+    patientMsg.textContent = `Patient masuk queue: ${prepared.status}. Worker akan melanjutkan lookup SATUSEHAT.`;
+    const resource = (await getJson(`${API}/patients/resource/${prepared.resource_id}`)).data;
+    renderPatientCard({ ...resource, ...prepared.patient, status: prepared.status });
     await load();
-    if (result.resource_id) {
-      const resource = (await getJson(`${API}/patients/resource/${result.resource_id}`)).data;
-      renderPatientCard({...resource, no_rkm_medis: noRm, nama: result.patient?.nama || resource.source_key, nik: result.patient?.nik});
-    }
   } catch (e) {
     patientMsg.textContent = e.message; patientCard.classList.remove('hidden'); patientCard.innerHTML = `<div class="error-box">${esc(e.message)}</div>`;
   }
@@ -107,8 +91,12 @@ function advisoryMarkup(advisory) {
 
 async function load() {
   try {
-    const snapshot = await getJson(`${API}/resources/monitoring`);
+    const [snapshot, runtime] = await Promise.all([
+      getJson(`${API}/resources/monitoring`),
+      getJson(`${API.replace(/\/api$/, '')}/health`)
+    ]);
     renderMonitoring(snapshot.data);
+    environment.textContent = `ENV: ${runtime.environment || runtime.satusehat?.environment || '--'}`;
     const params = new URLSearchParams({limit:'200'});
     if (type.value) params.set('type', type.value);
     if (status.value) params.set('status', status.value);
@@ -137,6 +125,7 @@ const status = document.querySelector('#status');
 const resourcesEl = document.querySelector('#resources');
 const errorsEl = document.querySelector('#errors');
 const health = document.querySelector('#health');
+const environment = document.querySelector('#environment');
 const detail = document.querySelector('#detail');
 const detailBody = document.querySelector('#detailBody');
 const patientSearch = document.querySelector('#patientSearch');
