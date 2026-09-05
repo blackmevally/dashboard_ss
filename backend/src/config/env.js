@@ -8,6 +8,10 @@ const required = (name) => {
 
 const optional = (name, fallback = '') => process.env[name] || fallback;
 const booleanEnv = (name, fallback = false) => String(process.env[name] ?? fallback).toLowerCase() === 'true';
+const listEnv = (name, fallback = '') => String(process.env[name] ?? fallback)
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
 
 const environment = String(process.env.ENVIRONMENT || 'SANDBOX').trim().toUpperCase();
 if (!['SANDBOX', 'PRODUCTION'].includes(environment)) {
@@ -35,7 +39,8 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   environment,
   dashboard: {
-    apiKey: optional('DASHBOARD_API_KEY')
+    apiKey: optional('DASHBOARD_API_KEY'),
+    allowedOrigins: listEnv('DASHBOARD_ALLOWED_ORIGINS', 'http://localhost,http://127.0.0.1')
   },
   postgres: {
     host: required('PGHOST'),
@@ -66,6 +71,9 @@ export const env = {
 if (environment === 'PRODUCTION') {
   if (env.dashboard.apiKey.length < 32) {
     throw new Error('Production DASHBOARD_API_KEY must be at least 32 characters');
+  }
+  if (!env.dashboard.allowedOrigins.length) {
+    throw new Error('Production DASHBOARD_ALLOWED_ORIGINS must contain at least one origin');
   }
 }
 
