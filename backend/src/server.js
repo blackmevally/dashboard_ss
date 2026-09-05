@@ -25,7 +25,11 @@ app.get('/health', async (_req, res) => {
   const result = {
     service: 'dashboard_ss-backend',
     status: 'ok',
-    satusehat_enabled: env.satusehat.enabled,
+    environment: env.environment,
+    satusehat: {
+      enabled: env.satusehat.enabled,
+      environment: env.satusehat.environment
+    },
     database: { control_plane: 'unknown', khanza: 'unknown' }
   };
 
@@ -52,7 +56,9 @@ app.get('/api', (_req, res) => {
   res.json({
     name: 'SATUSEHAT Control Plane API',
     version: '0.1.0',
-    mode: 'Khanza source-of-truth / integration control-plane'
+    mode: 'Khanza source-of-truth / integration control-plane',
+    environment: env.environment,
+    satusehat_enabled: env.satusehat.enabled
   });
 });
 
@@ -75,5 +81,5 @@ app.use((error, _req, res, _next) => {
 });
 
 app.listen(env.port, () => {
-  console.log(`dashboard_ss backend listening on :${env.port}`);
+  console.log(`dashboard_ss backend listening on :${env.port} (${env.environment})`);
 });
