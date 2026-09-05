@@ -3,11 +3,33 @@ import { controlDb } from '../../database/pool.js';
 import { createPatientByNik, searchPatientByNik } from '../../satusehat/fhirClient.js';
 import { markFailure, markSuccess } from '../../queue/resourceQueue.js';
 import { resolvePatientIhs } from './ihsResolver.js';
+import { env } from '../../config/env.js';
 
 export function maskNik(nik) {
   const value = String(nik || '');
   if (value.length < 8) return '********';
   return `${value.slice(0, 4)}********${value.slice(-4)}`;
+}
+
+function sanitizeSensitive(value) {
+  if (value == null) return value;
+  if (typeof value === 'string') {
+    return value
+      .replace(/(https?:\/\/[^\s?]+\?identifier=)([^&\s]+)/gi, '$1[REDACTED]')
+      .replace(/(identifier=)([^&\s]+)/gi, '$1[REDACTED]')
+      .replace(/(https%3A%2F%2Ffhir\.kemkes\.go\.id%2Fid%2Fnik%7C)(\d{16})/gi, '$1[REDACTED]')
+      .replace(/(https:\/\/fhir\.kemkes\.go\.id\/id\/nik\|)(\d{16})/gi, '$1[REDACTED]');
+  }
+  if (Array.isArray(value)) return value.map(sanitizeSensitive);
+  if (typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+      if (/^(value|no_ktp|nik)$/i.test(key) && /^\d{16}$/.test(String(item || ''))) {
+        return [key, '[REDACTED]'];
+      }
+      return [key, sanitizeSensitive(item)];
+    }));
+  }
+  return value;
 }
 
 function genderToFhir(jk) {
@@ -61,7 +83,13 @@ async function savePayload(resourceId, direction, payload, httpStatus = null, re
   await controlDb.query(
     `INSERT INTO integration_payload (resource_id, direction, payload, http_status, response)
      VALUES ($1, $2, $3::jsonb, $4, $5::jsonb)`,
-    [resourceId, direction, JSON.stringify(payload ?? {}), httpStatus, response == null ? null : JSON.stringify(response)]
+    [
+      resourceId,
+      direction,
+      JSON.stringify(sanitizeSensitive(payload ?? {})),
+      httpStatus,
+      response == null ? null : JSON.stringify(sanitizeSensitive(response))
+    ]
   );
 }
 
@@ -172,7 +200,14 @@ export async function lookupPatientIhs(resourceId, patient, alreadyProcessing = 
 }
 
 export async function createPatientIhs(resourceId, patient, nik = patient?.no_ktp, alreadyProcessing = false) {
-  // Explicit dashboard CREATE calls can start from DISCOVERED/READY/RETRY.
+  if (!env.satusehat.patientCreateEnabled) {
+    const error = new Error('Patient creation is disabled; monitoring-only mode is active');
+    error.code = 'PATIENT_CREATE_DISABLED';
+    error.httpStatus = 403;
+    throw error;
+  }
+
+  // Explicit CREATE calls can start from DISCOVERED/READY/RETRY.
   // Lookup -> create is already PROCESSING and must not increment the attempt twice.
   if (!alreadyProcessing) {
     const current = await getResource(resourceId);
