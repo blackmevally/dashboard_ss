@@ -10,8 +10,7 @@ import { requireOperationalAccess } from './security/operationalAccess.js';
 const app = express();
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigin = origin && /^(https?:\/\/)(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  if (allowedOrigin) {
+  if (origin && env.dashboard.allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }
@@ -37,7 +36,8 @@ app.get('/health', async (_req, res) => {
     },
     operational_access: {
       post_protection: env.environment === 'PRODUCTION',
-      api_key_configured: Boolean(env.dashboard.apiKey)
+      api_key_configured: Boolean(env.dashboard.apiKey),
+      allowed_origins_configured: env.dashboard.allowedOrigins.length
     },
     database: { control_plane: 'unknown', khanza: 'unknown' }
   };
